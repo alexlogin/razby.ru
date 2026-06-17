@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Role } from '@razby/shared';
+import { Role, STAFF_ROLES } from '@razby/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EstimateBuilderService } from './estimate-builder.service';
@@ -21,7 +21,7 @@ export class ProjectsService {
   ) {}
 
   private staff(user: RequestUser): boolean {
-    return [Role.COORDINATOR, Role.ADMIN, Role.SUPERADMIN].includes(user.role);
+    return STAFF_ROLES.includes(user.role);
   }
 
   /** Доступ к проекту: владелец, координатор проекта, персонал, либо участник-исполнитель. */

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { Role, RECOMMENDATION_LABELS_RU } from '@razby/shared';
+import { Role, RECOMMENDATION_LABELS_RU, STAFF_ROLES, PROVIDER_ROLES } from '@razby/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ComparisonService, type OfferForScoring } from './comparison.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -37,7 +37,7 @@ export class OffersService {
     const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
     if (!project) throw new NotFoundException('Проект не найден');
     const isOwner = project.customerId === user.sub || project.coordinatorId === user.sub;
-    const isStaff = [Role.COORDINATOR, Role.ADMIN, Role.SUPERADMIN].includes(user.role);
+    const isStaff = STAFF_ROLES.includes(user.role);
     if (!isOwner && !isStaff) throw new ForbiddenException('Нет прав на создание тендера');
 
     const tender = await this.prisma.tender.create({
@@ -80,7 +80,7 @@ export class OffersService {
   }
 
   async submitOffer(tenderId: string, dto: SubmitOfferDto, user: RequestUser) {
-    if (![Role.CONTRACTOR, Role.SUPPLIER, Role.CARRIER].includes(user.role)) {
+    if (!PROVIDER_ROLES.includes(user.role)) {
       throw new ForbiddenException('Предложения подают только исполнители');
     }
     const tender = await this.prisma.tender.findUnique({ where: { id: tenderId } });
@@ -153,7 +153,7 @@ export class OffersService {
     if (!tender) throw new NotFoundException('Тендер не найден');
     const isOwner =
       tender.project.customerId === user.sub || tender.project.coordinatorId === user.sub;
-    const isStaff = [Role.COORDINATOR, Role.ADMIN, Role.SUPERADMIN].includes(user.role);
+    const isStaff = STAFF_ROLES.includes(user.role);
     if (!isOwner && !isStaff) throw new ForbiddenException('Нет доступа');
 
     const offers = await this.prisma.offer.findMany({
@@ -245,7 +245,7 @@ export class OffersService {
     if (!offer) throw new NotFoundException('Предложение не найдено');
     const isOwner =
       offer.project.customerId === user.sub || offer.project.coordinatorId === user.sub;
-    const isStaff = [Role.COORDINATOR, Role.ADMIN, Role.SUPERADMIN].includes(user.role);
+    const isStaff = STAFF_ROLES.includes(user.role);
     if (!isOwner && !isStaff) throw new ForbiddenException('Нет прав');
 
     await this.prisma.$transaction(async (tx) => {

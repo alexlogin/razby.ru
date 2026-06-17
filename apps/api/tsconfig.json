@@ -23,8 +23,8 @@
     "noUnusedParameters": false,
     "resolveJsonModule": true,
     "lib": ["ES2022"],
-    "types": ["node", "jest"]
+    "types": ["node", "jest", "multer", "express"]
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "prisma", "test"]
 }

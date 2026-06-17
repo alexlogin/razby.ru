@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  Allow,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -36,6 +37,7 @@ export class CreateTenderDto {
 
   @ApiPropertyOptional({ description: 'Структурированная спецификация заявки' })
   @IsOptional()
+  @Allow()
   spec?: Record<string, unknown>;
 
   @ApiPropertyOptional()
