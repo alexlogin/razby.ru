@@ -1,145 +1,100 @@
-# Развёртывание на VPS
+# Развёртывание на VPS (razby.ru)
 
-Инструкция для одной VPS (Ubuntu 22.04+) с Docker. Платформа поднимается одной командой:
-PostgreSQL, Redis, API, Web и Nginx как реверс-прокси.
+Production-стек поднимается одной командой: PostgreSQL, Redis, API, Web и **Caddy** как
+реверс-прокси с **автоматическим HTTPS** (Let's Encrypt). Наружу открыт только Caddy
+(порты 80/443); БД и Redis доступны лишь внутри docker-сети.
 
-## 1. Подготовка сервера
+## 1. Предусловия
+
+- VPS (Ubuntu 22.04+), Docker + плагин compose, `openssl`, `git`.
+- **DNS razby.ru (и при желании www.razby.ru) указывает A-записью на IP сервера** —
+  Caddy выпустит сертификат автоматически при первом запросе.
 
 ```bash
-# Docker + Compose plugin
 curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER     # перелогиньтесь после этого
-
-# Файрвол
-sudo ufw allow OpenSSH
-sudo ufw allow 80
-sudo ufw allow 443
-sudo ufw enable
+sudo usermod -aG docker $USER     # перелогиньтесь
+sudo ufw allow OpenSSH && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable
 ```
 
-## 2. Код и переменные окружения
+## 2. Деплой одной командой
 
 ```bash
 git clone <repo-url> razby && cd razby
-cp .env.example .env
+
+# Первый запуск (создаст .env, сгенерирует секреты, соберёт, поднимет, наполнит БД):
+./scripts/deploy.sh --seed
 ```
 
-Обязательно отредактируйте `.env` для продакшена:
+Скрипт:
+
+1. создаёт `.env` из `.env.production.example`, если его нет;
+2. генерирует случайные `POSTGRES_PASSWORD`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
+   (если оставлены заглушки `CHANGE_ME`);
+3. делает `git pull` (можно отключить `--no-pull`);
+4. собирает и поднимает контейнеры (`docker-compose.prod.yml`);
+5. ждёт готовности API (миграции применяются автоматически при старте контейнера);
+6. при флаге `--seed` наполняет БД (справочники, шаблон погреба, тестовые аккаунты).
+
+Перед первым запуском отредактируйте в `.env` как минимум:
 
 ```ini
-NODE_ENV=production
-
-# Сильные случайные секреты (например: openssl rand -base64 48)
-JWT_ACCESS_SECRET=<случайная строка ≥32 симв>
-JWT_REFRESH_SECRET=<другая случайная строка ≥32 симв>
-
-# Пароль БД
-POSTGRES_PASSWORD=<надёжный пароль>
-DATABASE_URL=postgresql://razby:<надёжный пароль>@postgres:5432/razby?schema=public
-
-# Домен
-CORS_ORIGINS=https://razby.ru
-NEXT_PUBLIC_API_URL=https://razby.ru/api
-NEXT_PUBLIC_WS_URL=https://razby.ru
-STORAGE_PUBLIC_URL=https://razby.ru/files
+DOMAIN=razby.ru
+ACME_EMAIL=ваш-email@razby.ru   # для Let's Encrypt
 ```
 
-> Секреты держите только в `.env` на сервере (он в `.gitignore`). Не коммитьте их.
+После завершения сайт доступен по `https://razby.ru`.
 
-## 3. Запуск
+> ⚠️ Для боевого продакшена замените демо-сидинг: в `apps/api/prisma/seed.ts` уберите
+> тестовых подрядчиков/заказчика и оставьте только справочники и одного администратора,
+> затем пересоберите образ. Либо запускайте без `--seed` и создавайте администратора вручную.
+
+## 3. Обновление версии
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d --build
+./scripts/deploy.sh           # git pull + пересборка + перезапуск (без повторного seed)
 ```
 
-Это поднимет 5 сервисов. API при старте автоматически выполняет `prisma migrate deploy`.
-Состояние:
+## 4. Резервные копии
 
 ```bash
-docker compose -f infra/docker-compose.yml ps
-docker compose -f infra/docker-compose.yml logs -f api
-```
-
-## 4. Наполнение данными (один раз)
-
-```bash
-docker compose -f infra/docker-compose.yml exec api sh -c "cd /app/apps/api && node -e \"require('child_process').execSync('npx prisma db seed',{stdio:'inherit'})\""
-# либо, если в образе доступен ts-node:
-docker compose -f infra/docker-compose.yml exec api npx prisma db seed
-```
-
-> Для прода рекомендуется отдельный seed только справочников и одного администратора —
-> отредактируйте `apps/api/prisma/seed.ts` (уберите демо-подрядчиков), пересоберите образ.
-
-## 5. HTTPS
-
-Терминируйте TLS на внешнем балансировщике/прокси или замените `infra/nginx/nginx.conf`
-на конфигурацию с сертификатами. Быстрый вариант — Let's Encrypt через отдельный
-контейнер companion (nginx-proxy + acme) или системный Nginx перед Docker:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name razby.ru;
-    ssl_certificate     /etc/letsencrypt/live/razby.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/razby.ru/privkey.pem;
-
-    location / { proxy_pass http://127.0.0.1:80; proxy_set_header Host $host; }
-}
-server {
-    listen 80;
-    server_name razby.ru;
-    return 301 https://$host$request_uri;
-}
-```
-
-Получение сертификата:
-
-```bash
-sudo apt install certbot
-sudo certbot certonly --standalone -d razby.ru
-```
-
-## 6. Резервные копии
-
-База:
-
-```bash
-# Бэкап
-docker compose -f infra/docker-compose.yml exec -T postgres \
+# Бэкап БД
+docker compose -f infra/docker-compose.prod.yml exec -T postgres \
   pg_dump -U razby razby | gzip > backups/razby-$(date +%F).sql.gz
 
 # Восстановление
 gunzip -c backups/razby-2026-01-01.sql.gz | \
-  docker compose -f infra/docker-compose.yml exec -T postgres psql -U razby razby
+  docker compose -f infra/docker-compose.prod.yml exec -T postgres psql -U razby razby
 ```
 
-Файлы хранилища лежат в томе `storage` (или в S3, если `STORAGE_DRIVER=s3`). Настройте
-cron на ежедневный `pg_dump` и синхронизацию каталога/бакета.
+Загруженные файлы лежат в томе `storage` (или в S3 при `STORAGE_DRIVER=s3`). Настройте cron
+на ежедневный `pg_dump` и синхронизацию тома/бакета в отдельное хранилище.
 
-## 7. Обновление
-
-```bash
-git pull
-docker compose -f infra/docker-compose.yml up -d --build
-# миграции применятся автоматически при старте api
-```
-
-## 8. Health checks и мониторинг
+## 5. Health checks и логи
 
 - `GET /health` — liveness, `GET /health/ready` — readiness (проверка БД).
-- Healthcheck'и настроены в `docker-compose.yml` для postgres, redis и api.
-- Логи: `docker compose ... logs -f api`. Логи структурированы (pino) — их удобно
-  направлять в централизованный сборщик (Loki/ELK).
+- Healthcheck'и настроены для postgres, redis и api в `docker-compose.prod.yml`.
+- Логи: `docker compose -f infra/docker-compose.prod.yml logs -f api` (структурированные, pino).
 
-## 9. Переход на реальные внешние сервисы
+## 6. Переход на реальные внешние сервисы
 
-| Сервис    | Переменные                                            |
-| --------- | ----------------------------------------------------- |
+По умолчанию хранилище/SMS/email/платежи работают через mock. Для боевого режима задайте в
+`.env` драйверы и ключи:
+
+| Сервис    | Переменные                                                          |
+| --------- | ------------------------------------------------------------------- |
 | S3        | `STORAGE_DRIVER=s3`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` |
-| SMS       | `SMS_DRIVER=smsc`, `SMS_API_KEY`                      |
-| Email     | `EMAIL_DRIVER=smtp`, SMTP-настройки                   |
-| Платежи   | `PAYMENTS_DRIVER=yookassa`, `PAYMENTS_SECRET_KEY`     |
+| SMS       | `SMS_DRIVER=smsc`, `SMS_API_KEY`                                     |
+| Email     | `EMAIL_DRIVER=smtp` + SMTP-настройки                                 |
+| Платежи   | `PAYMENTS_DRIVER=yookassa`, `PAYMENTS_SECRET_KEY`                    |
 
 Для каждого сервиса в `apps/api/src/providers/*` есть интерфейс — добавьте реальную
 реализацию рядом с mock и зарегистрируйте её в `providers.module.ts` по значению драйвера.
+
+## 7. Ручной режим (без скрипта)
+
+```bash
+cp .env.production.example .env   # заполните DOMAIN, ACME_EMAIL, секреты
+docker compose -f infra/docker-compose.prod.yml --env-file .env up -d --build
+# одноразовый seed:
+docker compose -f infra/docker-compose.prod.yml exec -T api node dist-seed/seed.js
+```

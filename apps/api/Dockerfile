@@ -16,6 +16,7 @@ COPY apps/api apps/api
 RUN pnpm --filter @razby/shared build
 RUN pnpm --filter @razby/api prisma:generate
 RUN pnpm --filter @razby/api build
+RUN pnpm --filter @razby/api build:seed
 
 # ─── Runtime ───
 FROM node:20-alpine AS runner
@@ -30,6 +31,7 @@ RUN pnpm install --prod --frozen-lockfile=false
 
 COPY --from=builder /app/packages/shared/dist packages/shared/dist
 COPY --from=builder /app/apps/api/dist apps/api/dist
+COPY --from=builder /app/apps/api/dist-seed apps/api/dist-seed
 COPY --from=builder /app/apps/api/prisma apps/api/prisma
 COPY --from=builder /app/node_modules/.prisma node_modules/.prisma
 COPY --from=builder /app/apps/api/node_modules/.prisma apps/api/node_modules/.prisma
