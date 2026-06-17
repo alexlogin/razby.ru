@@ -29,11 +29,13 @@ prisma/migrations/dev.db*
 .vscode/*
 !.vscode/extensions.json
 
-# uploads / storage
-storage/
-uploads/
-infra/data/
-backups/
+# uploads / storage (только runtime-каталоги в корне и в apps/api, не исходники)
+/storage/
+/uploads/
+/apps/api/storage/
+/apps/api/uploads/
+/infra/data/
+/backups/
 
 # coverage
 coverage/
