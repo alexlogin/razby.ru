@@ -61,6 +61,16 @@ export interface AiAnalyzePricing {
   savingsPercent: number;
 }
 
+/** Настройки ИИ-агента для админки (ключ замаскирован). */
+export interface AiSettingsView {
+  driver: 'heuristic' | 'openrouter';
+  model: string;
+  baseUrl: string;
+  hasApiKey: boolean;
+  keyMask: string | null;
+  source: 'db' | 'env';
+}
+
 /** Ориентировочная оценка ИИ для запросов без готового сценария в БД. */
 export interface AiEstimatedStage {
   name: string;

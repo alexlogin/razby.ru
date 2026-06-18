@@ -22,6 +22,7 @@ import { OpenRouterAiProvider } from './ai/openrouter-ai.provider';
     { provide: SMS_PROVIDER, useClass: MockSmsProvider },
     { provide: EMAIL_PROVIDER, useClass: MockEmailProvider },
     { provide: PAYMENT_PROVIDER, useClass: MockPaymentProvider },
+    HeuristicAiProvider,
     {
       provide: AI_PROVIDER,
       inject: [ConfigService],
@@ -44,6 +45,6 @@ import { OpenRouterAiProvider } from './ai/openrouter-ai.provider';
       },
     },
   ],
-  exports: [STORAGE_PROVIDER, SMS_PROVIDER, EMAIL_PROVIDER, PAYMENT_PROVIDER, AI_PROVIDER],
+  exports: [STORAGE_PROVIDER, SMS_PROVIDER, EMAIL_PROVIDER, PAYMENT_PROVIDER, AI_PROVIDER, HeuristicAiProvider],
 })
 export class ProvidersModule {}

@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@razby/shared';
 import { AdminService } from './admin.service';
+import { AiSettingsService } from '../ai-agent/ai-settings.service';
+import { UpdateAiSettingsDto } from '../ai-agent/dto/ai-settings.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
 import {
@@ -20,7 +22,22 @@ import {
 @Roles(Role.ADMIN, Role.SUPERADMIN)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly aiSettings: AiSettingsService,
+  ) {}
+
+  @Get('ai-settings')
+  @ApiOperation({ summary: 'Настройки ИИ-агента (ключ маскируется)' })
+  getAiSettings() {
+    return this.aiSettings.getForAdmin();
+  }
+
+  @Put('ai-settings')
+  @ApiOperation({ summary: 'Изменить настройки ИИ-агента (драйвер, модель, ключ)' })
+  updateAiSettings(@Body() dto: UpdateAiSettingsDto, @CurrentUser() u: RequestUser) {
+    return this.aiSettings.update(dto, u.sub);
+  }
 
   @Get('analytics')
   @ApiOperation({ summary: 'Аналитика платформы' })

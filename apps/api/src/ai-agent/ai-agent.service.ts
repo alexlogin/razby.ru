@@ -1,12 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { AiAnalyzeResult, AiAnalyzeStage } from '@razby/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { FormulasService } from '../formulas/formulas.service';
-import {
-  AI_PROVIDER,
-  type AiProvider,
-  type AiTemplateContext,
-} from '../providers/ai/ai.provider';
+import { type AiTemplateContext } from '../providers/ai/ai.provider';
+import { AiSettingsService } from './ai-settings.service';
 import { AnalyzeRequestDto } from './dto/ai-agent.dto';
 
 type TemplateWithStages = Awaited<ReturnType<AiAgentService['loadTemplates']>>[number];
@@ -26,7 +23,7 @@ export class AiAgentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly formulas: FormulasService,
-    @Inject(AI_PROVIDER) private readonly ai: AiProvider,
+    private readonly aiSettings: AiSettingsService,
   ) {}
 
   async analyze(dto: AnalyzeRequestDto): Promise<AiAnalyzeResult> {
@@ -35,7 +32,8 @@ export class AiAgentService {
       ? await this.prisma.region.findUnique({ where: { code: dto.regionCode } })
       : null;
 
-    const understanding = await this.ai.understand({
+    const ai = await this.aiSettings.getProvider();
+    const understanding = await ai.understand({
       query: dto.query,
       regionName: region?.name,
       templates: templates.map((t) => this.toContext(t)),
