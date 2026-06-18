@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  Allow,
   IsArray,
   IsLatitude,
   IsLongitude,
@@ -46,6 +47,7 @@ export class AnswerItemDto {
   questionCode!: string;
 
   @ApiProperty({ description: 'Значение ответа (любой JSON-тип)' })
+  @Allow()
   value!: unknown;
 }
 

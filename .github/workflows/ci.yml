@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build shared package
+        run: pnpm --filter @razby/shared build
+
+      - name: Generate Prisma client
+        run: pnpm --filter @razby/api prisma:generate
+
+      - name: Typecheck API
+        run: pnpm --filter @razby/api typecheck
+
+      - name: Build API
+        run: pnpm --filter @razby/api build
+
+      - name: Unit tests (formula engine, comparison)
+        run: pnpm --filter @razby/api test
+
+      - name: Typecheck web
+        run: pnpm --filter @razby/web typecheck
+
+      - name: Build web
+        run: pnpm --filter @razby/web build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_API_URL: http://localhost:4000/api

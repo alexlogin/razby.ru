@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  Allow,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -109,5 +110,6 @@ export class CreatePromoDto {
 
 export class SetSettingDto {
   @ApiProperty()
+  @Allow()
   value!: unknown;
 }
