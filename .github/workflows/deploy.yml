@@ -43,8 +43,9 @@ jobs:
             --exclude '.next' \
             --exclude 'dist' \
             --exclude 'dist-seed' \
-            --exclude 'storage' \
-            --exclude 'backups' \
+            --exclude '/storage' \
+            --exclude '/apps/api/storage' \
+            --exclude '/backups' \
             --exclude '.env' \
             -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
             ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:razby/"
