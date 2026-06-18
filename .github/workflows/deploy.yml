@@ -1,0 +1,59 @@
+name: Deploy
+
+# Автодеплой на VPS по SSH.
+#  • Запускается вручную (Actions → Deploy → Run workflow) — можно с галкой seed для первого раза.
+#  • Автоматически — при пуше в main.
+# Раннер GitHub заливает код на сервер (rsync) и запускает scripts/deploy.sh.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Наполнить БД (seed) — включать только при первом деплое'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Подготовить SSH-ключ
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          PORT="${{ secrets.DEPLOY_PORT || '22' }}"
+          ssh-keyscan -p "$PORT" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Залить код на сервер (rsync)
+        run: |
+          PORT="${{ secrets.DEPLOY_PORT || '22' }}"
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude 'dist' \
+            --exclude 'dist-seed' \
+            --exclude 'storage' \
+            --exclude 'backups' \
+            --exclude '.env' \
+            -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:razby/"
+
+      - name: Запустить деплой на сервере
+        run: |
+          PORT="${{ secrets.DEPLOY_PORT || '22' }}"
+          SEED_FLAG=""
+          if [ "${{ github.event.inputs.seed }}" = "true" ]; then SEED_FLAG="--seed"; fi
+          ssh -i ~/.ssh/id_deploy -p "$PORT" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd razby && DOMAIN='${{ secrets.DEPLOY_DOMAIN }}' ACME_EMAIL='${{ secrets.DEPLOY_ACME_EMAIL }}' ./scripts/deploy.sh --no-pull $SEED_FLAG"

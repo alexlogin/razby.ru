@@ -90,7 +90,32 @@ gunzip -c backups/razby-2026-01-01.sql.gz | \
 Для каждого сервиса в `apps/api/src/providers/*` есть интерфейс — добавьте реальную
 реализацию рядом с mock и зарегистрируйте её в `providers.module.ts` по значению драйвера.
 
-## 7. Ручной режим (без скрипта)
+## 7. Автодеплой через GitHub Actions
+
+Workflow `.github/workflows/deploy.yml` заливает код на сервер (rsync по SSH) и запускает
+`scripts/deploy.sh`. Триггеры: пуш в `main` и ручной запуск (Actions → Deploy → Run workflow,
+с галочкой `seed` для первого раза).
+
+**Что нужно один раз настроить:**
+
+1. **Сервер**: установлен Docker, есть пользователь с SSH-доступом, в `~/.ssh/authorized_keys`
+   добавлен публичный ключ деплоя. На сервере должен быть `rsync` (`apt install -y rsync`).
+2. **Секреты репозитория** (Settings → Secrets and variables → Actions → New repository secret):
+
+   | Секрет              | Значение                                              |
+   | ------------------- | ----------------------------------------------------- |
+   | `DEPLOY_HOST`       | IP или домен сервера                                  |
+   | `DEPLOY_USER`       | SSH-пользователь (напр. `root` или `deploy`)          |
+   | `DEPLOY_SSH_KEY`    | приватный SSH-ключ деплоя (целиком)                   |
+   | `DEPLOY_PORT`       | порт SSH (опционально, по умолчанию 22)               |
+   | `DEPLOY_DOMAIN`     | `razby.ru`                                             |
+   | `DEPLOY_ACME_EMAIL` | e-mail для Let's Encrypt                               |
+
+Первый деплой — вручную с включённым `seed`. Дальше каждый пуш в `main` деплоит автоматически.
+Секреты приложения (`POSTGRES_PASSWORD`, JWT) генерируются на сервере при первом запуске и
+сохраняются в `~/razby/.env` (rsync его не перезаписывает).
+
+## 8. Ручной режим (без скрипта)
 
 ```bash
 cp .env.production.example .env   # заполните DOMAIN, ACME_EMAIL, секреты

@@ -28,6 +28,14 @@ if [ ! -f .env ]; then
   echo "→ Создан .env из .env.production.example. Проверьте DOMAIN и ACME_EMAIL."
 fi
 
+# 1a. Переопределение домена/почты из окружения (используется автодеплоем из CI)
+if [ -n "${DOMAIN:-}" ]; then
+  sed -i "s|^DOMAIN=.*|DOMAIN=${DOMAIN}|" .env
+fi
+if [ -n "${ACME_EMAIL:-}" ]; then
+  sed -i "s|^ACME_EMAIL=.*|ACME_EMAIL=${ACME_EMAIL}|" .env
+fi
+
 # 2. Автогенерация секретов вместо заглушек CHANGE_ME
 gen_secret() { openssl rand -base64 48 | tr -d '\n/+=' | cut -c1-48; }
 ensure_secret() {
