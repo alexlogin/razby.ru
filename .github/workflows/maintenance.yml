@@ -1,28 +1,19 @@
 name: Maintenance
 
 # Сервисные операции razby.ru на сервере по запросу (Actions → Maintenance → Run workflow).
-# Заходит на сервер по SSH и выполняет scripts/maintenance.sh с выбранной задачей.
+# task: status | logs-api | migrate | seed | restart | backup-db | cleanup-bankrot | cleanup-sites | cleanup-pm2
+# confirm: для удаляющих задач (cleanup-*) укажите DELETE
 
 on:
   workflow_dispatch:
     inputs:
       task:
-        description: 'Задача'
-        type: choice
-        default: status
-        options:
-          - status
-          - logs-api
-          - migrate
-          - seed
-          - restart
-          - backup-db
-          - cleanup-bankrot
-          - cleanup-sites
-          - cleanup-pm2
+        description: 'Задача (status, logs-api, migrate, seed, restart, backup-db, cleanup-bankrot, cleanup-sites, cleanup-pm2)'
+        required: true
+        default: 'status'
       confirm:
         description: 'Для удаляющих задач введите DELETE'
-        type: string
+        required: false
         default: ''
 
 concurrency:
@@ -32,7 +23,6 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - uses: actions/checkout@v4
 
