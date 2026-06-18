@@ -2,7 +2,9 @@
 
 import type { AuthResponse } from '@razby/shared';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+// В продакшене фронтенд и API на одном домене за nginx → используем относительный путь.
+// Для локальной разработки (next dev) задайте NEXT_PUBLIC_API_URL=http://localhost:4000/api.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
 const ACCESS_KEY = 'razby_access';
 const REFRESH_KEY = 'razby_refresh';
