@@ -26,13 +26,20 @@ export default function HomePage() {
             «под ключ».
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/projects/new" className="btn-primary">
+            <Link href="/assistant" className="btn-primary">
+              Спросить ИИ-агента
+            </Link>
+            <Link href="/projects/new" className="btn-ghost">
               Рассчитать погреб
             </Link>
             <Link href="/register" className="btn-ghost">
               Я подрядчик / поставщик
             </Link>
           </div>
+          <p className="mt-2 text-sm text-gray-500">
+            Опишите задачу словами — агент разобьёт на этапы и сравнит цену «по этапам» и «под
+            ключ». Без регистрации.
+          </p>
         </div>
         <div className="card p-6">
           <p className="text-sm font-semibold text-gray-500">Первый сценарий</p>

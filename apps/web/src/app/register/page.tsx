@@ -8,6 +8,13 @@ import { Role, ROLE_LABELS_RU } from '@razby/shared';
 
 const ROLES = [Role.CUSTOMER, Role.CONTRACTOR, Role.SUPPLIER, Role.CARRIER];
 
+/** Куда вернуть пользователя после регистрации (?next=, только внутренние пути). */
+function nextPath(): string {
+  if (typeof window === 'undefined') return '/dashboard';
+  const n = new URLSearchParams(window.location.search).get('next');
+  return n && n.startsWith('/') ? n : '/dashboard';
+}
+
 export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
@@ -25,7 +32,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(form);
-      router.push('/dashboard');
+      router.push(nextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка регистрации');
     } finally {

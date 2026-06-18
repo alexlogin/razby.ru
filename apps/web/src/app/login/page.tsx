@@ -5,6 +5,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 
+/** Куда вернуть пользователя после входа (?next=, только внутренние пути). */
+function nextPath(): string {
+  if (typeof window === 'undefined') return '/dashboard';
+  const n = new URLSearchParams(window.location.search).get('next');
+  return n && n.startsWith('/') ? n : '/dashboard';
+}
+
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
@@ -19,7 +26,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push('/dashboard');
+      router.push(nextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка входа');
     } finally {
