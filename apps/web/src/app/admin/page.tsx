@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { rub } from '@/lib/format';
-import { ROLE_LABELS_RU, STAFF_ROLES } from '@razby/shared';
+import { ROLE_LABELS_RU, STAFF_ROLES, type AiSettingsView } from '@razby/shared';
 
 interface Analytics {
   usersByRole: { role: string; count: number }[];
@@ -111,6 +111,114 @@ export default function AdminPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      <AiSettingsCard />
+    </div>
+  );
+}
+
+function AiSettingsCard() {
+  const [data, setData] = useState<AiSettingsView | null>(null);
+  const [driver, setDriver] = useState<'heuristic' | 'openrouter'>('heuristic');
+  const [model, setModel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [status, setStatus] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  function load() {
+    api<AiSettingsView>('/admin/ai-settings')
+      .then((d) => {
+        setData(d);
+        setDriver(d.driver);
+        setModel(d.model);
+      })
+      .catch(() => {});
+  }
+  useEffect(load, []);
+
+  async function save() {
+    setStatus('');
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = { driver, model };
+      if (apiKey) body.apiKey = apiKey; // пустое поле — ключ не меняем
+      const updated = await api<AiSettingsView>('/admin/ai-settings', { method: 'PUT', body });
+      setData(updated);
+      setApiKey('');
+      setStatus('Сохранено');
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!data) return null;
+
+  return (
+    <div className="card space-y-4 p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="font-bold">ИИ-агент</h2>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+          источник: {data.source === 'db' ? 'админка' : 'переменные окружения'}
+        </span>
+      </div>
+      <p className="text-sm text-gray-500">
+        Режим понимания запроса. Для бесплатных моделей подойдёт ключ{' '}
+        <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-brand-600">
+          OpenRouter
+        </a>{' '}
+        и модель с суффиксом <code>:free</code>.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label">Режим</label>
+          <select
+            className="input"
+            value={driver}
+            onChange={(e) => setDriver(e.target.value as 'heuristic' | 'openrouter')}
+          >
+            <option value="heuristic">Эвристика (офлайн, без затрат)</option>
+            <option value="openrouter">OpenRouter (бесплатные модели)</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">Модель</label>
+          <input
+            className="input"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="meta-llama/llama-3.3-70b-instruct:free"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="label">
+          API-ключ {data.hasApiKey && <span className="text-gray-400">(сейчас: {data.keyMask})</span>}
+        </label>
+        <input
+          className="input"
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={data.hasApiKey ? 'Оставьте пустым, чтобы не менять' : 'sk-or-...'}
+          autoComplete="off"
+        />
+        {driver === 'openrouter' && !data.hasApiKey && !apiKey && (
+          <p className="mt-1 text-xs text-amber-600">
+            Без ключа OpenRouter будет работать эвристика (цены только для сценариев из БД).
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button className="btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Сохраняем…' : 'Сохранить'}
+        </button>
+        {status && <span className="text-sm text-gray-500">{status}</span>}
       </div>
     </div>
   );
