@@ -78,7 +78,7 @@ services:
       NEXT_PUBLIC_API_URL: https://${DOMAIN:-razby.ru}/api
       NEXT_PUBLIC_WS_URL: https://${DOMAIN:-razby.ru}
     ports:
-      - '127.0.0.1:3001:3000'
+      - '127.0.0.1:13001:3000'
 
 volumes:
   pgdata:
