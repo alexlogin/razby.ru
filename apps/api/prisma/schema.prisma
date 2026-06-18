@@ -2,7 +2,9 @@
 // PostgreSQL + Prisma ORM. Деньги хранятся в Decimal, гибкие поля — в Json.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native — для локали; musl-openssl-3.0 — для рантайма в Docker (node:20-alpine).
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

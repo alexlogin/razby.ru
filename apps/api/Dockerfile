@@ -1,6 +1,6 @@
 # ─── Сборка ───
 FROM node:20-alpine AS builder
-RUN corepack enable
+RUN corepack enable && apk add --no-cache openssl libc6-compat
 WORKDIR /app
 
 # Манифесты для кэша зависимостей
@@ -20,7 +20,7 @@ RUN pnpm --filter @razby/api build:seed
 
 # ─── Runtime ───
 FROM node:20-alpine AS runner
-RUN corepack enable
+RUN corepack enable && apk add --no-cache openssl libc6-compat
 WORKDIR /app
 ENV NODE_ENV=production
 
