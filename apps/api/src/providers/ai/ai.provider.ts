@@ -18,10 +18,34 @@ export interface AiUnderstandInput {
   templates: AiTemplateContext[];
 }
 
+/** Один этап ориентировочной ИИ-оценки (когда готового сценария в БД нет). */
+export interface AiEstimatedStage {
+  name: string;
+  note?: string;
+  priceMin: number;
+  priceMax: number;
+}
+
 /**
- * Результат «понимания» запроса. ИИ НЕ считает цены и количества —
- * только распознаёт намерение, подбирает шаблон и извлекает числовые параметры.
- * Все суммы считаются формулами и прайсами БД на стороне сервиса.
+ * Ориентировочная оценка от ИИ для запросов без готового сценария в БД.
+ * Это НЕ точный расчёт формулами — диапазоны для понимания порядка цен.
+ */
+export interface AiEstimate {
+  stages: AiEstimatedStage[];
+  stagedMin: number;
+  stagedMax: number;
+  turnkeyMin: number;
+  turnkeyMax: number;
+  /** Почему выгоднее заказывать по этапам, а не «под ключ». */
+  whyCheaper: string;
+  /** Допущения и что стоит уточнить. */
+  assumptions?: string;
+}
+
+/**
+ * Результат «понимания» запроса.
+ * - Если найден шаблон БД (matchedSlug) — цены считаются формулами/прайсами на сервере.
+ * - Иначе ИИ может вернуть ориентировочную оценку (estimate) с диапазонами.
  */
 export interface AiUnderstanding {
   /** Человеко-читаемое резюме того, как понят запрос. */
@@ -32,8 +56,10 @@ export interface AiUnderstanding {
   confidence: number;
   /** Извлечённые числовые параметры: variableKey → значение. */
   parameters: Record<string, number>;
-  /** Предлагаемые этапы текстом, если шаблон не найден (без чисел). */
+  /** Предлагаемые этапы текстом, если шаблон не найден и нет оценки. */
   proposedStages: { name: string; note?: string }[];
+  /** Ориентировочная оценка ИИ (используется, если matchedSlug = null). */
+  estimate: AiEstimate | null;
   /** Чем получен результат: реальной моделью или офлайн-эвристикой. */
   source: 'llm' | 'heuristic';
 }

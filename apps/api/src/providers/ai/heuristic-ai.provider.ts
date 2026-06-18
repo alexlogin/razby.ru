@@ -27,6 +27,7 @@ export class HeuristicAiProvider implements AiProvider {
         confidence: 0,
         parameters: {},
         proposedStages: this.genericStages(q),
+        estimate: null,
         source: 'heuristic',
       };
     }
@@ -48,6 +49,7 @@ export class HeuristicAiProvider implements AiProvider {
       confidence: match.confidence,
       parameters,
       proposedStages: [],
+      estimate: null,
       source: 'heuristic',
     };
   }

@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import {
+  AiEstimate,
   AiProvider,
   AiUnderstanding,
   AiUnderstandInput,
@@ -48,15 +49,29 @@ export class OpenRouterAiProvider implements AiProvider {
       )
       .join('\n');
     return [
-      'Ты — ассистент строительной платформы Razby.ru. Платформа разбивает заказ на этапы и считает смету формулами.',
-      'Твоя задача — ТОЛЬКО понять запрос пользователя: подобрать наиболее подходящий шаблон из списка и извлечь числовые параметры из текста.',
-      'Категорически НЕ придумывай цены, количества материалов и числовые сметы — это делает платформа формулами.',
+      'Ты — ассистент строительной платформы Razby.ru. Платформа разбивает заказ на этапы, чтобы заказчик заказывал работы и материалы по отдельности и не переплачивал за «под ключ».',
+      'Сначала пойми запрос пользователя и реши:',
+      '1) Если запрос соответствует одному из шаблонов ниже — верни его slug в matchedSlug и извлеки числовые параметры (parameters). В этом случае цены посчитает платформа формулами, НЕ придумывай их.',
+      '2) Если подходящего шаблона нет (например, заборы, навесы, дорожки и т.п.) — поставь matchedSlug=null и САМ составь ориентировочный расклад по этапам с диапазонами цен в рублях (estimate). Этапы должны быть логичны для России (например, для забора: разметка, бурение под сваи, установка свай/столбов, монтаж лаг и секций, ворота/калитка). Объясни в whyCheaper, почему по этапам дешевле, чем «под ключ» (нет наценки генподрядчика, прямые цены на материалы и работу, конкуренция исполнителей).',
+      'Цены оценивай реалистично для указанного региона России. Это ОРИЕНТИР, а не точный расчёт.',
       '',
       'Доступные шаблоны:',
       templates || '(нет шаблонов)',
       '',
       'Верни СТРОГО один JSON-объект без markdown и пояснений в формате:',
-      '{"summary": string (кратко по-русски, как понят запрос), "matchedSlug": string|null (slug шаблона или null), "confidence": number (0..1), "parameters": {<variableKey>: number} (только извлечённые из текста параметры подобранного шаблона), "proposedStages": [{"name": string, "note"?: string}] (заполняй только если matchedSlug=null)}',
+      '{',
+      '  "summary": string (кратко по-русски, как понят запрос),',
+      '  "matchedSlug": string|null,',
+      '  "confidence": number (0..1),',
+      '  "parameters": {<variableKey>: number} (только при matchedSlug != null),',
+      '  "estimate": null | {',
+      '    "stages": [{"name": string, "note"?: string, "priceMin": number, "priceMax": number}],',
+      '    "stagedMin": number, "stagedMax": number,  // сумма по этапам (через платформу)',
+      '    "turnkeyMin": number, "turnkeyMax": number, // ориентир «под ключ» (обычно дороже)',
+      '    "whyCheaper": string, "assumptions"?: string',
+      '  } (заполняй ТОЛЬКО при matchedSlug=null),',
+      '  "proposedStages": [{"name": string, "note"?: string}] (только если не смог оценить цены)',
+      '}',
     ].join('\n');
   }
 
@@ -141,6 +156,7 @@ export class OpenRouterAiProvider implements AiProvider {
           .filter((s) => s.name)
       : [];
 
+    const estimate = validSlug ? null : this.normalizeEstimate(obj.estimate);
     const confidence = Number(obj.confidence);
     return {
       summary: typeof obj.summary === 'string' && obj.summary.trim()
@@ -149,8 +165,50 @@ export class OpenRouterAiProvider implements AiProvider {
       matchedSlug: validSlug,
       confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : validSlug ? 0.6 : 0,
       parameters,
-      proposedStages: validSlug ? [] : proposedStages,
+      proposedStages: validSlug || estimate ? [] : proposedStages,
+      estimate,
       source: 'llm',
+    };
+  }
+
+  private normalizeEstimate(raw: unknown): AiEstimate | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    const num = (v: unknown): number => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    const stages = Array.isArray(o.stages)
+      ? (o.stages as unknown[])
+          .map((s) => {
+            const so = (s ?? {}) as Record<string, unknown>;
+            const priceMin = num(so.priceMin);
+            const priceMax = Math.max(priceMin, num(so.priceMax));
+            return { name: String(so.name ?? '').trim(), note: so.note ? String(so.note) : undefined, priceMin, priceMax };
+          })
+          .filter((s) => s.name)
+      : [];
+    if (stages.length === 0) return null;
+
+    const sumMin = stages.reduce((a, s) => a + s.priceMin, 0);
+    const sumMax = stages.reduce((a, s) => a + s.priceMax, 0);
+    const stagedMin = num(o.stagedMin) || sumMin;
+    const stagedMax = Math.max(stagedMin, num(o.stagedMax) || sumMax);
+    // «Под ключ» обычно дороже; если модель не дала — оцениваем как +30..60%.
+    const turnkeyMin = Math.max(stagedMin, num(o.turnkeyMin) || Math.round(stagedMin * 1.3));
+    const turnkeyMax = Math.max(turnkeyMin, num(o.turnkeyMax) || Math.round(stagedMax * 1.6));
+
+    return {
+      stages,
+      stagedMin,
+      stagedMax,
+      turnkeyMin,
+      turnkeyMax,
+      whyCheaper:
+        typeof o.whyCheaper === 'string' && o.whyCheaper.trim()
+          ? o.whyCheaper.trim()
+          : 'По этапам дешевле: вы платите напрямую исполнителям и поставщикам без наценки генподрядчика за «под ключ».',
+      assumptions: o.assumptions ? String(o.assumptions) : undefined,
     };
   }
 }

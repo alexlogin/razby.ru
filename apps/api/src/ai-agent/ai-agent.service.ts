@@ -53,30 +53,70 @@ export class AiAgentService {
       proposedStages: understanding.proposedStages,
       stages: [],
       pricing: null,
+      aiEstimate: null,
+      whyCheaper: null,
       cta: null,
     };
 
     const matched = understanding.matchedSlug
       ? templates.find((t) => t.slug === understanding.matchedSlug)
       : undefined;
-    if (!matched) return base;
 
-    const { stages, missingParameters, pricing } = await this.estimate(
-      matched,
-      understanding.parameters,
-      region,
-    );
+    // 1) Есть готовый сценарий в БД — точный расчёт формулами/прайсами.
+    if (matched) {
+      const { stages, missingParameters, pricing } = await this.estimate(
+        matched,
+        understanding.parameters,
+        region,
+      );
+      return {
+        ...base,
+        matched: true,
+        template: { slug: matched.slug, name: matched.name, description: matched.description ?? undefined },
+        missingParameters,
+        proposedStages: [],
+        stages,
+        pricing,
+        whyCheaper: pricing ? this.whyCheaperText(pricing.savings, pricing.savingsPercent) : null,
+        cta: { templateSlug: matched.slug },
+      };
+    }
 
-    return {
-      ...base,
-      matched: true,
-      template: { slug: matched.slug, name: matched.name, description: matched.description ?? undefined },
-      missingParameters,
-      proposedStages: [],
-      stages,
-      pricing,
-      cta: { templateSlug: matched.slug },
-    };
+    // 2) Готового сценария нет, но ИИ дал ориентировочную оценку с диапазонами.
+    if (understanding.estimate && understanding.estimate.stages.length > 0) {
+      const e = understanding.estimate;
+      const savingsMin = Math.max(0, Math.round(e.turnkeyMin - e.stagedMax));
+      const savingsMax = Math.max(0, Math.round(e.turnkeyMax - e.stagedMin));
+      return {
+        ...base,
+        proposedStages: [],
+        aiEstimate: {
+          stages: e.stages,
+          stagedMin: Math.round(e.stagedMin),
+          stagedMax: Math.round(e.stagedMax),
+          turnkeyMin: Math.round(e.turnkeyMin),
+          turnkeyMax: Math.round(e.turnkeyMax),
+          savingsMin,
+          savingsMax,
+          whyCheaper: e.whyCheaper,
+          assumptions: e.assumptions,
+          currency: 'RUB',
+        },
+        whyCheaper: e.whyCheaper,
+      };
+    }
+
+    // 3) Ничего не вышло — только текстовые предложения этапов.
+    return base;
+  }
+
+  private whyCheaperText(savings: number, percent: number): string {
+    const base =
+      'Заказывая каждый этап напрямую — работы у исполнителей, материалы у поставщиков, технику у перевозчиков — вы не платите наценку генподрядчика за «под ключ» и сравниваете предложения между собой.';
+    if (savings > 0) {
+      return `${base} По расчёту экономия — около ${savings.toLocaleString('ru-RU')} ₽ (${percent}%).`;
+    }
+    return base;
   }
 
   private loadTemplates() {
