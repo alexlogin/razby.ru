@@ -21,6 +21,13 @@ export interface AppConfig {
   sms: { driver: 'mock' | 'smsc'; apiKey?: string };
   email: { driver: 'mock' | 'smtp'; from: string };
   payments: { driver: 'mock' | 'yookassa'; secretKey?: string };
+  ai: {
+    driver: 'heuristic' | 'openrouter';
+    apiKey?: string;
+    model: string;
+    baseUrl: string;
+    appUrl: string;
+  };
   uploads: { maxFileSizeMb: number; allowedMime: string[] };
 }
 
@@ -64,6 +71,13 @@ export default (): { app: AppConfig } => ({
     payments: {
       driver: (process.env.PAYMENTS_DRIVER as 'mock' | 'yookassa') ?? 'mock',
       secretKey: process.env.PAYMENTS_SECRET_KEY,
+    },
+    ai: {
+      driver: (process.env.AI_DRIVER as 'heuristic' | 'openrouter') ?? 'heuristic',
+      apiKey: process.env.OPENROUTER_API_KEY,
+      model: process.env.AI_MODEL ?? 'meta-llama/llama-3.3-70b-instruct:free',
+      baseUrl: process.env.AI_BASE_URL ?? 'https://openrouter.ai/api/v1',
+      appUrl: process.env.AI_APP_URL ?? 'https://razby.ru',
     },
     uploads: {
       maxFileSizeMb: parseInt(process.env.UPLOAD_MAX_MB ?? '25', 10),

@@ -15,6 +15,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { FormulasModule } from './formulas/formulas.module';
 import { ProjectsModule } from './projects/projects.module';
 import { OffersModule } from './offers/offers.module';
+import { AiAgentModule } from './ai-agent/ai-agent.module';
 import { ExportModule } from './export/export.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { AdminModule } from './admin/admin.module';
@@ -41,6 +42,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     FormulasModule,
     ProjectsModule,
     OffersModule,
+    AiAgentModule,
     ExportModule,
     UploadsModule,
     AdminModule,

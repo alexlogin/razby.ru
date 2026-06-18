@@ -21,6 +21,9 @@ export function Header() {
         </Link>
 
         <nav className="flex items-center gap-2 text-sm">
+          <Link href="/assistant" className="px-3 py-2 font-medium text-gray-700 hover:text-brand-600">
+            ИИ-агент
+          </Link>
           {user ? (
             <>
               <Link href="/dashboard" className="hidden px-3 py-2 font-medium text-gray-700 hover:text-brand-600 sm:block">

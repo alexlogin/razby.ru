@@ -34,3 +34,75 @@ export interface Paginated<T> {
   page: number;
   pageSize: number;
 }
+
+/** Этап в ответе ИИ-агента (числа — из формул и прайсов БД). */
+export interface AiAnalyzeStage {
+  code: string;
+  order: number;
+  name: string;
+  workType: string;
+  estimatedDays: number;
+  materialsCost: number;
+  worksCost: number;
+  total: number;
+  /** true — не хватило параметров для расчёта материалов этапа. */
+  needsInput: boolean;
+}
+
+export interface AiAnalyzePricing {
+  currency: string;
+  subtotal: number;
+  commission: number;
+  /** Стоимость «по этапам» (через платформу). */
+  stagedTotal: number;
+  /** Ориентир «под ключ». */
+  turnkeyTotal: number;
+  savings: number;
+  savingsPercent: number;
+}
+
+/** Ориентировочная оценка ИИ для запросов без готового сценария в БД. */
+export interface AiEstimatedStage {
+  name: string;
+  note?: string;
+  priceMin: number;
+  priceMax: number;
+}
+
+export interface AiEstimate {
+  stages: AiEstimatedStage[];
+  stagedMin: number;
+  stagedMax: number;
+  turnkeyMin: number;
+  turnkeyMax: number;
+  savingsMin: number;
+  savingsMax: number;
+  whyCheaper: string;
+  assumptions?: string;
+  currency: string;
+}
+
+/** Результат работы ИИ-агента по свободному запросу пользователя. */
+export interface AiAnalyzeResult {
+  query: string;
+  summary: string;
+  source: 'llm' | 'heuristic';
+  matched: boolean;
+  confidence: number;
+  template: { slug: string; name: string; description?: string } | null;
+  /** Извлечённые из запроса числовые параметры (variableKey → значение). */
+  parameters: Record<string, number>;
+  /** Параметры шаблона, которые стоит уточнить для точного расчёта. */
+  missingParameters: { key: string; label: string; unit?: string }[];
+  /** Предлагаемые этапы текстом, если готовый шаблон не найден и нет оценки. */
+  proposedStages: { name: string; note?: string }[];
+  /** Точный расчёт по шаблону БД (если matched). */
+  stages: AiAnalyzeStage[];
+  pricing: AiAnalyzePricing | null;
+  /** Ориентировочная оценка ИИ (если шаблона нет, но ИИ оценил порядок цен). */
+  aiEstimate: AiEstimate | null;
+  /** Почему по этапам дешевле, чем «под ключ» (показываем всегда, когда есть цены). */
+  whyCheaper: string | null;
+  /** Подсказка для финального действия: создать проект по шаблону (после регистрации). */
+  cta: { templateSlug: string } | null;
+}
