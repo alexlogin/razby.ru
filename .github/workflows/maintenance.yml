@@ -1,0 +1,62 @@
+name: Maintenance
+
+# Сервисные операции razby.ru на сервере по запросу (Actions → Maintenance → Run workflow).
+# Заходит на сервер по SSH и выполняет scripts/maintenance.sh с выбранной задачей.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Задача'
+        type: choice
+        default: status
+        options:
+          - status
+          - logs-api
+          - migrate
+          - seed
+          - restart
+          - backup-db
+          - cleanup-bankrot
+          - cleanup-sites
+          - cleanup-pm2
+      confirm:
+        description: 'Для удаляющих задач введите DELETE'
+        type: string
+        default: ''
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Подготовить SSH-ключ
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          PORT="${{ secrets.DEPLOY_PORT || '22' }}"
+          ssh-keyscan -p "$PORT" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Залить актуальные скрипты на сервер
+        run: |
+          PORT="${{ secrets.DEPLOY_PORT || '22' }}"
+          rsync -az \
+            --exclude '.git' --exclude 'node_modules' --exclude '.next' \
+            --exclude 'dist' --exclude 'dist-seed' --exclude '/storage' \
+            --exclude '/apps/api/storage' --exclude '.env' \
+            -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:razby/"
+
+      - name: Выполнить задачу
+        run: |
+          PORT="${{ secrets.DEPLOY_PORT || '22' }}"
+          ssh -i ~/.ssh/id_deploy -p "$PORT" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd razby && chmod +x scripts/maintenance.sh && ./scripts/maintenance.sh '${{ inputs.task }}' '${{ inputs.confirm }}'"
