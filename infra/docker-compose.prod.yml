@@ -1,8 +1,12 @@
-name: razby-prod
+name: razby
 
-# Производственный стек razby.ru (приложение Razby) с автоматическим HTTPS
-# (Caddy + Let's Encrypt). Наружу открыт только Caddy (80/443).
-# Приложение Razby (Next.js) само обслуживает и UI, и /api/*.
+# Производственный стек razby.ru (приложение Razby).
+# На VPS внешний общий обратный прокси (front proxy) держит 80/443, терминирует HTTPS
+# для razby.ru и проксирует на 127.0.0.1:13001 — поэтому здесь СВОЙ Caddy НЕ поднимаем,
+# а публикуем приложение строго на 127.0.0.1:${RAZBY_HOST_PORT:-13001} (как делал старый сайт).
+# Проект называется razby — тот же, что у прежнего сайта, поэтому up --remove-orphans
+# заменяет старые контейнеры (web/api/postgres/redis) новыми web+worker, не трогая
+# front proxy и другие сайты на VPS.
 
 services:
   web:
@@ -17,6 +21,8 @@ services:
       NODE_ENV: production
       PORT: "3000"
       NEXTAUTH_URL: https://${DOMAIN}
+    ports:
+      - '127.0.0.1:${RAZBY_HOST_PORT:-13001}:3000'
     volumes:
       - appdata:/app/prisma
     healthcheck:
@@ -41,23 +47,5 @@ services:
       web:
         condition: service_started
 
-  caddy:
-    image: caddy:2-alpine
-    restart: always
-    depends_on:
-      - web
-    environment:
-      DOMAIN: ${DOMAIN:?нужен DOMAIN, напр. razby.ru}
-      ACME_EMAIL: ${ACME_EMAIL:?нужен ACME_EMAIL для Let's Encrypt}
-    ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
 volumes:
   appdata:
-  caddy_data:
-  caddy_config:

@@ -37,17 +37,19 @@ curl http://127.0.0.1:3000/api/health
 
 ## Production-деплой на razby.ru
 
-Боевой стек живёт в `infra/docker-compose.prod.yml` (приложение Razby + воркер + Caddy с
-автоматическим HTTPS). Деплой выполняется через GitHub Actions (`.github/workflows/deploy.yml`):
-раннер заливает код на VPS по rsync+SSH и запускает `scripts/deploy.sh`.
+Боевой стек живёт в `infra/docker-compose.prod.yml` (приложение Razby + воркер). Деплой
+выполняется через GitHub Actions (`.github/workflows/deploy.yml`): раннер заливает код на VPS
+по rsync+SSH и запускает `scripts/deploy.sh`.
 
 - **Сервер (VPS):** `89.111.131.180`
 - **Домен:** `razby.ru`
-- **HTTPS:** Caddy + Let's Encrypt (`infra/caddy/Caddyfile`)
+- **HTTPS / 80,443:** держит внешний общий front proxy VPS, который проксирует `razby.ru`
+  на `127.0.0.1:13001`. Приложение публикуется именно на этом порту (`RAZBY_HOST_PORT`, по умолчанию 13001).
 - **Скрипт на сервере:** `scripts/deploy.sh [--seed] [--no-pull]`
 
-`deploy.sh` перед переключением делает резервную копию томов прошлого стека (`razby-prod_*`)
-в `backups/` и аккуратно заменяет старый сайт, не трогая другие сайты на VPS.
+`deploy.sh` перед переключением делает резервную копию томов прежнего сайта (`razby[-_]*`)
+в `backups/` и аккуратно заменяет старый сайт (проект `razby`), не трогая front proxy и
+другие сайты на VPS.
 
 Перед боевым запуском задайте на сервере в `.env`:
 

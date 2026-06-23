@@ -65,15 +65,16 @@ set_default DATABASE_URL "file:./razby.db"
 set_default RAZBY_DEMO_MODE "false"
 set_default RAZBY_EXECUTION_MODE "simulate"
 set_default RAZBY_WORKER_ID "vps-worker-01"
+# Порт, на который внешний front proxy VPS проксирует razby.ru (как у старого сайта).
+set_default RAZBY_HOST_PORT "13001"
 ensure_secret NEXTAUTH_SECRET
 ensure_secret RAZBY_OWNER_ACCESS_CODE
 ensure_secret RAZBY_ADMIN_TOKEN
 
 DOMAIN="$(grep -E '^DOMAIN=' .env | head -1 | cut -d= -f2- || true)"
-ACME_EMAIL="$(grep -E '^ACME_EMAIL=' .env | head -1 | cut -d= -f2- || true)"
 [ -n "$DOMAIN" ] || { echo "Заполните DOMAIN в .env" >&2; exit 1; }
-[ -n "$ACME_EMAIL" ] || { echo "Заполните ACME_EMAIL в .env" >&2; exit 1; }
-export DOMAIN ACME_EMAIL
+RAZBY_HOST_PORT="$(grep -E '^RAZBY_HOST_PORT=' .env | head -1 | cut -d= -f2- || true)"
+export DOMAIN RAZBY_HOST_PORT
 
 # 3. Обновление кода
 if [ "$NO_PULL" = false ] && [ -d .git ]; then
@@ -81,8 +82,8 @@ if [ "$NO_PULL" = false ] && [ -d .git ]; then
   git pull --ff-only || echo "  (git pull пропущен)"
 fi
 
-# 4. Резервная копия томов старого/текущего проекта razby-prod
-echo "→ Резервная копия томов проекта razby-prod…"
+# 4. Резервная копия томов прежнего razby-сайта
+echo "→ Резервная копия томов прежнего razby-сайта…"
 mkdir -p backups
 TS="$(date +%Y%m%d-%H%M%S)"
 # Бэкапим тома прежнего razby-сайта (проекты razby / razby-prod)
@@ -100,16 +101,14 @@ docker ps --format '   {{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null || true
 echo "→ Compose-проекты:"
 docker compose ls --all 2>/dev/null || true
 
-# 4b. Остановить ПРЕДЫДУЩИЙ razby-сайт, чтобы освободить порты 80/443.
-#     Затрагиваются только проекты razby/razby-prod — другие сайты на VPS не трогаем.
-#     Тома НЕ удаляются (down без -v), бэкап выше уже сделан.
-echo "→ Останавливаю предыдущий razby-стек (проекты razby, razby-prod)…"
-for proj in razby razby-prod; do
-  echo "   • docker compose -p $proj down"
-  docker compose -p "$proj" down --remove-orphans 2>/dev/null || true
-done
+# 4b. Убрать временный проект razby-prod (артефакт прежних попыток деплоя).
+#     Внешний front proxy (80/443) и другие сайты на VPS НЕ трогаем.
+echo "→ Удаляю временный проект razby-prod (если есть)…"
+docker compose -p razby-prod down --remove-orphans 2>/dev/null || true
 
-# 5. Сборка и запуск
+# 5. Сборка и запуск. Проект называется razby (как у старого сайта), поэтому
+#    up --remove-orphans заменяет старые контейнеры (web/api/postgres/redis) новым
+#    web+worker на 127.0.0.1:${RAZBY_HOST_PORT}, не затрагивая front proxy.
 echo "→ Сборка и запуск контейнеров…"
 "${COMPOSE[@]}" up -d --build --remove-orphans
 
@@ -133,6 +132,6 @@ if [ "$SEED" = true ]; then
 fi
 
 echo
-echo "✅ Готово. Сайт: https://${DOMAIN}"
-echo "   Caddy выпустит/продлит HTTPS-сертификат автоматически (DNS должен вести на сервер)."
+echo "✅ Готово. Приложение Razby слушает на 127.0.0.1:${RAZBY_HOST_PORT}."
+echo "   Внешний front proxy VPS проксирует https://${DOMAIN} → 127.0.0.1:${RAZBY_HOST_PORT} (HTTPS на нём)."
 "${COMPOSE[@]}" ps
