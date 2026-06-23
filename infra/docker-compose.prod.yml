@@ -21,8 +21,13 @@ services:
       NODE_ENV: production
       PORT: "3000"
       NEXTAUTH_URL: https://${DOMAIN}
+    # Внешний host-nginx VPS проксирует:
+    #   /            → 127.0.0.1:${RAZBY_HOST_PORT:-13001}
+    #   /api/, /health → 127.0.0.1:${RAZBY_API_PORT:-4000}
+    # Приложение Razby (Next.js) обслуживает и страницы, и /api/* — поэтому слушаем оба порта.
     ports:
       - '127.0.0.1:${RAZBY_HOST_PORT:-13001}:3000'
+      - '127.0.0.1:${RAZBY_API_PORT:-4000}:3000'
     volumes:
       - appdata:/app/prisma
     healthcheck:

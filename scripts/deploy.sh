@@ -65,8 +65,10 @@ set_default DATABASE_URL "file:./razby.db"
 set_default RAZBY_DEMO_MODE "false"
 set_default RAZBY_EXECUTION_MODE "simulate"
 set_default RAZBY_WORKER_ID "vps-worker-01"
-# Порт, на который внешний front proxy VPS проксирует razby.ru (как у старого сайта).
+# Порты, на которые внешний host-nginx VPS проксирует razby.ru (как у старого сайта):
+#   / → RAZBY_HOST_PORT (13001), /api/ и /health → RAZBY_API_PORT (4000).
 set_default RAZBY_HOST_PORT "13001"
+set_default RAZBY_API_PORT "4000"
 ensure_secret NEXTAUTH_SECRET
 ensure_secret RAZBY_OWNER_ACCESS_CODE
 ensure_secret RAZBY_ADMIN_TOKEN
@@ -74,7 +76,8 @@ ensure_secret RAZBY_ADMIN_TOKEN
 DOMAIN="$(grep -E '^DOMAIN=' .env | head -1 | cut -d= -f2- || true)"
 [ -n "$DOMAIN" ] || { echo "Заполните DOMAIN в .env" >&2; exit 1; }
 RAZBY_HOST_PORT="$(grep -E '^RAZBY_HOST_PORT=' .env | head -1 | cut -d= -f2- || true)"
-export DOMAIN RAZBY_HOST_PORT
+RAZBY_API_PORT="$(grep -E '^RAZBY_API_PORT=' .env | head -1 | cut -d= -f2- || true)"
+export DOMAIN RAZBY_HOST_PORT RAZBY_API_PORT
 
 # 3. Обновление кода
 if [ "$NO_PULL" = false ] && [ -d .git ]; then
