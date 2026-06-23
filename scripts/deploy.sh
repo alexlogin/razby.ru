@@ -85,7 +85,8 @@ fi
 echo "→ Резервная копия томов проекта razby-prod…"
 mkdir -p backups
 TS="$(date +%Y%m%d-%H%M%S)"
-for vol in $(docker volume ls -q 2>/dev/null | grep -E '^razby-prod_' || true); do
+# Бэкапим тома прежнего razby-сайта (проекты razby / razby-prod)
+for vol in $(docker volume ls -q 2>/dev/null | grep -E '^razby[-_]' || true); do
   echo "   • $vol"
   docker run --rm -v "$vol":/from -v "$ROOT/backups":/to alpine \
     tar czf "/to/${vol}-${TS}.tar.gz" -C /from . >/dev/null 2>&1 \
@@ -93,7 +94,22 @@ for vol in $(docker volume ls -q 2>/dev/null | grep -E '^razby-prod_' || true); 
     || echo "     (пропущено: $vol)"
 done
 
-# 5. Сборка и запуск (старые контейнеры прежнего сайта удаляются как orphans)
+# 4a. Диагностика текущего состояния (видно в логах деплоя)
+echo "→ Текущие контейнеры на сервере:"
+docker ps --format '   {{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null || true
+echo "→ Compose-проекты:"
+docker compose ls --all 2>/dev/null || true
+
+# 4b. Остановить ПРЕДЫДУЩИЙ razby-сайт, чтобы освободить порты 80/443.
+#     Затрагиваются только проекты razby/razby-prod — другие сайты на VPS не трогаем.
+#     Тома НЕ удаляются (down без -v), бэкап выше уже сделан.
+echo "→ Останавливаю предыдущий razby-стек (проекты razby, razby-prod)…"
+for proj in razby razby-prod; do
+  echo "   • docker compose -p $proj down"
+  docker compose -p "$proj" down --remove-orphans 2>/dev/null || true
+done
+
+# 5. Сборка и запуск
 echo "→ Сборка и запуск контейнеров…"
 "${COMPOSE[@]}" up -d --build --remove-orphans
 
