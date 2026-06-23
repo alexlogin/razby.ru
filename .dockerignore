@@ -9,3 +9,11 @@ prisma/razby.db-journal
 qa-screenshots
 .codex-gramgpt-audit
 .git
+.github
+backups
+infra
+docs
+deploy
+# Старый монорепо (если остался на сервере) не должен попадать в build-контекст
+apps
+packages
