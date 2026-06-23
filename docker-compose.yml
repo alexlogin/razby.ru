@@ -1,0 +1,36 @@
+services:
+  razby-web:
+    build: .
+    image: razby-web:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+    ports:
+      - "${RAZBY_HOST_PORT:-3000}:3000"
+    volumes:
+      - razby_data:/app/prisma
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  razby-worker:
+    image: razby-web:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      RAZBY_WORKER_ID: "vps-worker-01"
+    command: ["sh", "-c", "npm run db:init && npm run worker:watch"]
+    volumes:
+      - razby_data:/app/prisma
+    depends_on:
+      razby-web:
+        condition: service_started
+
+volumes:
+  razby_data:

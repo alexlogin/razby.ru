@@ -1,5 +1,6 @@
 # Caddy автоматически выпускает и продлевает Let's Encrypt-сертификат для домена,
 # если DNS razby.ru уже указывает на этот сервер. Email берётся из переменной ACME_EMAIL.
+# Приложение Razby (Next.js) обслуживает и страницы, и /api/* на порту 3000.
 
 {
 	email {$ACME_EMAIL}
@@ -13,22 +14,7 @@ www.{$DOMAIN} {
 {$DOMAIN} {
 	encode zstd gzip
 
-	# API, загруженные файлы и health — на backend
-	@api path /api/* /files/* /health /health/*
-	handle @api {
-		reverse_proxy api:4000
-	}
-
-	# WebSocket
-	@ws path /ws/*
-	handle @ws {
-		reverse_proxy api:4000
-	}
-
-	# Всё остальное — на фронтенд (Next.js)
-	handle {
-		reverse_proxy web:3000
-	}
+	reverse_proxy web:3000
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

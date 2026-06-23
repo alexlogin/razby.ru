@@ -1,85 +1,50 @@
 name: razby-prod
 
-# Производственный стек razby.ru с автоматическим HTTPS (Caddy + Let's Encrypt).
-# Порты БД и Redis наружу НЕ публикуются — доступ только внутри docker-сети.
-# Наружу открыт только Caddy (80/443).
+# Производственный стек razby.ru (приложение Razby) с автоматическим HTTPS
+# (Caddy + Let's Encrypt). Наружу открыт только Caddy (80/443).
+# Приложение Razby (Next.js) само обслуживает и UI, и /api/*.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-razby}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?нужен POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-razby}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-razby}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    command: ['redis-server', '--appendonly', 'yes']
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  api:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      PORT: 4000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-razby}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-razby}?schema=public
-      REDIS_URL: redis://redis:6379
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?нужен JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?нужен JWT_REFRESH_SECRET}
-      CORS_ORIGINS: https://${DOMAIN}
-      STORAGE_PUBLIC_URL: https://${DOMAIN}/files
-      STORAGE_DRIVER: ${STORAGE_DRIVER:-mock}
-      SMS_DRIVER: ${SMS_DRIVER:-mock}
-      EMAIL_DRIVER: ${EMAIL_DRIVER:-mock}
-      PAYMENTS_DRIVER: ${PAYMENTS_DRIVER:-mock}
-    volumes:
-      - storage:/app/apps/api/storage
-    healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:4000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
   web:
     build:
       context: ..
-      dockerfile: apps/web/Dockerfile
+      dockerfile: Dockerfile
+    image: razby-web:latest
     restart: always
-    depends_on:
-      - api
+    env_file:
+      - ../.env
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
-      NEXT_PUBLIC_WS_URL: https://${DOMAIN}
+      PORT: "3000"
+      NEXTAUTH_URL: https://${DOMAIN}
+    volumes:
+      - appdata:/app/prisma
+    healthcheck:
+      test: ['CMD-SHELL', "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  worker:
+    image: razby-web:latest
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      RAZBY_WORKER_ID: ${RAZBY_WORKER_ID:-vps-worker-01}
+    command: ['sh', '-c', 'npm run db:init && npm run worker:watch']
+    volumes:
+      - appdata:/app/prisma
+    depends_on:
+      web:
+        condition: service_started
 
   caddy:
     image: caddy:2-alpine
     restart: always
     depends_on:
-      - api
       - web
     environment:
       DOMAIN: ${DOMAIN:?нужен DOMAIN, напр. razby.ru}
@@ -93,8 +58,6 @@ services:
       - caddy_config:/config
 
 volumes:
-  pgdata:
-  redisdata:
-  storage:
+  appdata:
   caddy_data:
   caddy_config:

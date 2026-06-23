@@ -1,0 +1,15 @@
+[Unit]
+Description=Razby worker
+After=network.target razby.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/razby
+EnvironmentFile=/opt/razby/.env
+Environment=RAZBY_WORKER_ID=vps-worker-01
+ExecStart=/usr/bin/npm run worker:watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

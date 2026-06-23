@@ -1,0 +1,11 @@
+.next
+node_modules
+npm-debug.log
+.env
+.env.local
+.env.*.local
+prisma/razby.db
+prisma/razby.db-journal
+qa-screenshots
+.codex-gramgpt-audit
+.git
