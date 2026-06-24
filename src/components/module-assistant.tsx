@@ -2,16 +2,32 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
-import { CheckCircle2, HelpCircle, ListChecks, PlayCircle, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, CheckCircle2, HelpCircle, ListChecks, Loader2, PlayCircle, RefreshCw, X } from "lucide-react";
 import { useI18n } from "@/components/i18n-provider";
 import { getLocalizedModule, type Locale } from "@/lib/i18n";
+import { getModulePolicy } from "@/lib/module-policies";
 import type { ModuleCategory, RazbyModule } from "@/lib/modules";
 
 type AssistantStep = {
   title: string;
   detail: string;
   href?: string;
+};
+
+type ReadinessState = "ready" | "warn" | "blocked";
+
+type ReadinessCheck = {
+  key: string;
+  label: string;
+  state: ReadinessState;
+  help: string;
+};
+
+type WorkspaceReadiness = {
+  executionMode: string;
+  readyForProduction: boolean;
+  checks: ReadinessCheck[];
 };
 
 const categorySteps: Record<Locale, Record<ModuleCategory, AssistantStep[]>> = {
@@ -150,6 +166,59 @@ function getCurrentModule(pathname: string, locale: Locale) {
   return match ? getLocalizedModule(decodeURIComponent(match[1]), locale) : undefined;
 }
 
+function statusClass(state: ReadinessState) {
+  if (state === "blocked") {
+    return "risk";
+  }
+
+  return state === "warn" ? "warn" : "";
+}
+
+function stateLabel(state: ReadinessState, translate: (key: string) => string) {
+  return translate(`assistant.${state}`);
+}
+
+function getRequiredChecks(module: RazbyModule | undefined, readiness: WorkspaceReadiness | null) {
+  if (!module || !readiness) {
+    return [];
+  }
+
+  const checks = new Map(readiness.checks.map((check) => [check.key, check]));
+  const required = new Set(getModulePolicy(module.slug).requires);
+
+  if (required.has("telegram-api")) {
+    required.add("telegram-session");
+  }
+
+  if (readiness.executionMode === "live") {
+    required.add("worker");
+  }
+
+  return Array.from(required)
+    .map((key) => checks.get(key))
+    .filter((check): check is ReadinessCheck => Boolean(check));
+}
+
+function pickStepCheck(step: AssistantStep, readiness: WorkspaceReadiness | null) {
+  if (!step.href || !readiness) {
+    return undefined;
+  }
+
+  const checks = new Map(readiness.checks.map((check) => [check.key, check]));
+  const href = step.href;
+  const keys = [
+    ...(href.includes("/accounts") ? ["accounts", "telegram-session"] : []),
+    ...(href.includes("/tools") ? ["proxies"] : []),
+    ...(href.includes("/admin") ? ["telegram-api", "ai-provider", "google-oauth", "email-auth"] : []),
+    ...(href.includes("/settings") ? ["nextauth-secret", "owner-access", "email-auth", "google-oauth", "worker", "execution-mode"] : []),
+    ...(href.includes("/modules/ggr") ? ["accounts"] : []),
+    ...(href.includes("/audit") ? ["worker", "execution-mode"] : []),
+  ];
+  const matched = keys.map((key) => checks.get(key)).filter((check): check is ReadinessCheck => Boolean(check));
+
+  return matched.find((check) => check.state !== "ready") ?? matched[0];
+}
+
 function moduleFieldStep(module: RazbyModule, locale: Locale, translate: (key: string, values?: Record<string, string | number>) => string): AssistantStep {
   const labels = module.fields.map((field) => field.label).join(", ");
   return {
@@ -204,6 +273,35 @@ export function ModuleAssistant() {
   const pathname = usePathname();
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [readiness, setReadiness] = useState<WorkspaceReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessError, setReadinessError] = useState(false);
+
+  const loadReadiness = useCallback(async () => {
+    setReadinessLoading(true);
+    setReadinessError(false);
+
+    try {
+      const response = await fetch("/api/readiness", { cache: "no-store" });
+
+      if (!response.ok) {
+        throw new Error("readiness_failed");
+      }
+
+      const data = (await response.json()) as WorkspaceReadiness;
+      setReadiness(data);
+    } catch {
+      setReadinessError(true);
+    } finally {
+      setReadinessLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      void loadReadiness();
+    }
+  }, [loadReadiness, open, pathname]);
 
   const { title, subtitle, steps } = useMemo(() => {
     const module = getCurrentModule(pathname, locale);
@@ -223,6 +321,37 @@ export function ModuleAssistant() {
     };
   }, [locale, pathname, t]);
 
+  const currentModule = useMemo(() => getCurrentModule(pathname, locale), [locale, pathname]);
+  const readinessView = useMemo(() => {
+    if (!readiness) {
+      return null;
+    }
+
+    const counts = readiness.checks.reduce(
+      (result, check) => {
+        result[check.state] += 1;
+        return result;
+      },
+      { ready: 0, warn: 0, blocked: 0 } as Record<ReadinessState, number>,
+    );
+    const requiredChecks = getRequiredChecks(currentModule, readiness);
+    const missingRequired = requiredChecks.filter((check) => check.state !== "ready");
+    const workspaceIssues = readiness.checks.filter((check) => check.state !== "ready");
+    const checksToShow = (requiredChecks.length > 0 ? (missingRequired.length > 0 ? missingRequired : requiredChecks) : workspaceIssues).slice(0, 4);
+    const overallState: ReadinessState = missingRequired.some((check) => check.state === "blocked") || (!requiredChecks.length && counts.blocked > 0)
+      ? "blocked"
+      : missingRequired.length > 0 || (!requiredChecks.length && counts.warn > 0)
+        ? "warn"
+        : "ready";
+
+    return {
+      checksToShow,
+      counts,
+      hasModuleRequirements: requiredChecks.length > 0,
+      overallState,
+    };
+  }, [currentModule, readiness]);
+
   return (
     <div className={`assistant-widget ${open ? "open" : ""}`}>
       {open ? (
@@ -237,21 +366,90 @@ export function ModuleAssistant() {
             </button>
           </div>
           <p className="muted">{subtitle}</p>
-          <div className="assistant-steps">
-            {steps.map((step, index) => (
-              <div className="assistant-step" key={`${step.title}-${index}`}>
-                <span className="assistant-step-number">{index + 1}</span>
+
+          {readinessLoading && !readiness ? (
+            <div className="assistant-loading">
+              <Loader2 size={15} />
+              <span>{t("assistant.loadingReadiness")}</span>
+            </div>
+          ) : null}
+
+          {readiness && readinessView ? (
+            <div className="assistant-readiness">
+              <div className="assistant-readiness-head">
                 <div>
-                  <strong>{step.title}</strong>
-                  <p>{step.detail}</p>
-                  {step.href ? (
-                    <Link className="assistant-link" href={step.href}>
-                      {t("assistant.link")}
-                    </Link>
-                  ) : null}
+                  <span className="muted small">{t("assistant.readiness")}</span>
+                  <strong>{t(`assistant.status.${readinessView.overallState}`)}</strong>
+                </div>
+                <button className="icon-button" type="button" aria-label={t("assistant.refresh")} title={t("assistant.refresh")} onClick={loadReadiness} disabled={readinessLoading}>
+                  {readinessLoading ? <Loader2 size={15} /> : <RefreshCw size={15} />}
+                </button>
+              </div>
+              <div className="assistant-readiness-meta">
+                <span className={`status ${readiness.readyForProduction ? "" : "warn"}`}>
+                  {t("assistant.mode")}: {readiness.executionMode}
+                </span>
+              </div>
+              <div className="assistant-readiness-grid">
+                <div className="assistant-readiness-stat">
+                  <span>{t("assistant.ready")}</span>
+                  <strong>{readinessView.counts.ready}</strong>
+                </div>
+                <div className="assistant-readiness-stat warn">
+                  <span>{t("assistant.warn")}</span>
+                  <strong>{readinessView.counts.warn}</strong>
+                </div>
+                <div className="assistant-readiness-stat blocked">
+                  <span>{t("assistant.blocked")}</span>
+                  <strong>{readinessView.counts.blocked}</strong>
                 </div>
               </div>
-            ))}
+              <div className="assistant-checks">
+                <span className="muted small">{readinessView.hasModuleRequirements ? t("assistant.requiredNow") : t("assistant.fixCritical")}</span>
+                {readinessView.checksToShow.length > 0 ? (
+                  readinessView.checksToShow.map((check) => (
+                    <div className={`assistant-check ${check.state}`} key={check.key}>
+                      <div>
+                        <strong>{check.label}</strong>
+                        <p>{check.help}</p>
+                      </div>
+                      <span className={`status ${statusClass(check.state)}`}>{stateLabel(check.state, t)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted small">{t("assistant.allGood")}</p>
+                )}
+              </div>
+            </div>
+          ) : readinessError ? (
+            <div className="assistant-loading warn">
+              <AlertCircle size={15} />
+              <span>{t("assistant.readinessError")}</span>
+            </div>
+          ) : null}
+
+          <div className="assistant-steps">
+            {steps.map((step, index) => {
+              const check = pickStepCheck(step, readiness);
+
+              return (
+                <div className="assistant-step" key={`${step.title}-${index}`}>
+                  <span className="assistant-step-number">{index + 1}</span>
+                  <div>
+                    <div className="assistant-step-title-row">
+                      <strong>{step.title}</strong>
+                      {check ? <span className={`status ${statusClass(check.state)}`}>{stateLabel(check.state, t)}</span> : null}
+                    </div>
+                    <p>{step.detail}</p>
+                    {step.href ? (
+                      <Link className="assistant-link" href={step.href}>
+                        {t("assistant.link")}
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="assistant-footer">
             <CheckCircle2 size={16} />

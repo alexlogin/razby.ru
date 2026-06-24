@@ -78,6 +78,7 @@ model Workspace {
   workerHeartbeats  WorkerHeartbeat[]
   approvalItems     ApprovalItem[]
   conversations     TelegramConversation[]
+  telegramAuthSessions TelegramAuthSession[]
 }
 
 model TelegramAccount {
@@ -95,6 +96,22 @@ model TelegramAccount {
   updatedAt    DateTime       @updatedAt
   workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   conversations TelegramConversation[]
+}
+
+model TelegramAuthSession {
+  id             String     @id @default(cuid())
+  workspaceId    String
+  label          String
+  phone          String
+  status         String     @default("CODE_SENT")
+  encryptedJson  String
+  isCodeViaApp   Boolean    @default(false)
+  expiresAt      DateTime
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  workspace      Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, expiresAt])
 }
 
 model ProxyEndpoint {

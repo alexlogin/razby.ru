@@ -5,6 +5,7 @@ import { createRunApproval, needsHumanApproval } from "@/lib/approvals";
 import { getModuleAdapter, type ModuleInput } from "@/lib/module-adapters";
 import { enrichAiModuleResultWithOpenRouter } from "@/lib/openrouter";
 import { getModuleReadiness } from "@/lib/readiness";
+import { buildApprovedRunTelegramExecution, publicTelegramError } from "@/lib/telegram-runner";
 
 type GeneratedLead = {
   username: string;
@@ -370,11 +371,54 @@ export async function processApprovedRun(runId: string, actorId?: string | null)
   }
 
   const existingResult = parseRunResult(run.resultJson);
-  const workerExecution = buildWorkerExecution({
-    slug: run.moduleSlug,
-    result: existingResult,
-    workerId: actorId ?? "worker",
-  });
+  let workerExecution: Record<string, unknown>;
+
+  try {
+    workerExecution =
+      readiness.executionMode === "live"
+        ? await buildApprovedRunTelegramExecution({
+            workspaceId: run.workspaceId,
+            moduleSlug: run.moduleSlug,
+            result: existingResult,
+            workerId: actorId ?? "worker",
+          })
+        : buildWorkerExecution({
+            slug: run.moduleSlug,
+            result: existingResult,
+            workerId: actorId ?? "worker",
+          });
+  } catch (error) {
+    const blockedResult = {
+      ...existingResult,
+      workerExecution: {
+        state: "TELEGRAM_SESSION_FAILED",
+        blockedAt: new Date().toISOString(),
+        workerId: actorId ?? "worker",
+        message: publicTelegramError(error),
+      },
+    };
+
+    const blockedRun = await prisma.moduleRun.update({
+      where: { id: run.id },
+      data: {
+        status: "BLOCKED_SETUP",
+        resultJson: JSON.stringify(blockedResult),
+        logsJson: appendRunLog(claimedRun.logsJson, "error", "Telegram session validation failed"),
+        completedAt: new Date(),
+      },
+    });
+
+    await logAudit({
+      workspaceId: run.workspaceId,
+      actorId,
+      action: "module_run.telegram_session_failed",
+      entity: "ModuleRun",
+      entityId: run.id,
+      metadata: { slug: run.moduleSlug, message: publicTelegramError(error) },
+    });
+
+    return blockedRun;
+  }
 
   const dispatchedRun = await prisma.moduleRun.update({
     where: { id: run.id },

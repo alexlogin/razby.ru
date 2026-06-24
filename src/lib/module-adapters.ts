@@ -1,13 +1,9 @@
 import { modules } from "@/lib/modules";
+import { modulePolicies, type ModulePolicy } from "@/lib/module-policies";
+
+export type { ModulePolicy } from "@/lib/module-policies";
 
 export type ModuleInput = Record<string, string | number | boolean | null | undefined>;
-
-export type ModulePolicy = {
-  risk: "low" | "medium" | "high";
-  approval: "auto" | "manual" | "required";
-  safeLimit: number;
-  requires: string[];
-};
 
 export type ModuleExecutionResult = {
   summary: string;
@@ -48,34 +44,12 @@ function makeRows(seed: string, count: number) {
   }));
 }
 
-const policies: Record<string, ModulePolicy> = {
-  "mass-looking": { risk: "medium", approval: "manual", safeLimit: 1200, requires: ["telegram-api", "accounts", "proxies"] },
-  ggr: { risk: "low", approval: "auto", safeLimit: 200, requires: ["accounts"] },
-  "neuro-dialogs": { risk: "high", approval: "required", safeLimit: 80, requires: ["telegram-api", "ai-provider", "accounts"] },
-  "manager-telegram-accounts": { risk: "low", approval: "auto", safeLimit: 1000, requires: ["telegram-api"] },
-  "account-takeover-protection": { risk: "low", approval: "auto", safeLimit: 500, requires: ["accounts"] },
-  massreact: { risk: "medium", approval: "manual", safeLimit: 500, requires: ["telegram-api", "accounts", "proxies"] },
-  "bulk-story-copy": { risk: "high", approval: "required", safeLimit: 120, requires: ["telegram-api", "accounts", "proxies"] },
-  "parsing-comments": { risk: "low", approval: "auto", safeLimit: 5000, requires: ["telegram-api"] },
-  "parsing-messages": { risk: "medium", approval: "manual", safeLimit: 3000, requires: ["telegram-api"] },
-  "parsing-users": { risk: "medium", approval: "manual", safeLimit: 3000, requires: ["telegram-api"] },
-  "parsing-groups": { risk: "low", approval: "auto", safeLimit: 1000, requires: ["telegram-api"] },
-  "ai-account-protection": { risk: "low", approval: "auto", safeLimit: 1000, requires: ["accounts"] },
-  "channel-parser": { risk: "low", approval: "auto", safeLimit: 8000, requires: ["telegram-api"] },
-  "telegram-folders": { risk: "medium", approval: "manual", safeLimit: 250, requires: ["telegram-api", "accounts"] },
-  "auto-warm": { risk: "medium", approval: "manual", safeLimit: 250, requires: ["telegram-api", "accounts", "proxies"] },
-  "unified-inbox": { risk: "high", approval: "required", safeLimit: 1000, requires: ["telegram-api", "ai-provider", "accounts"] },
-  neurochatting: { risk: "high", approval: "required", safeLimit: 120, requires: ["telegram-api", "ai-provider", "accounts"] },
-  neurocommenting: { risk: "high", approval: "required", safeLimit: 120, requires: ["telegram-api", "ai-provider", "accounts"] },
-  "proxy-checker": { risk: "low", approval: "auto", safeLimit: 100, requires: [] },
-};
-
 function baseResult(slug: string, input: ModuleInput, summary: string, stats: Record<string, string | number | boolean>, rows: Array<Record<string, string | number | boolean>>, nextActions: string[]): ModuleExecutionResult {
   return {
     summary,
     stats,
     rows,
-    policy: policies[slug] ?? { risk: "low", approval: "auto", safeLimit: 100, requires: [] },
+    policy: modulePolicies[slug] ?? { risk: "low", approval: "auto", safeLimit: 100, requires: [] },
     nextActions,
   };
 }
@@ -83,14 +57,14 @@ function baseResult(slug: string, input: ModuleInput, summary: string, stats: Re
 const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   "mass-looking": (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const targets = linesFrom(input.targets);
       return baseResult(
         slug,
         input,
         "План просмотров Stories собран с распределением по аккаунтам, прокси и безопасным окнам.",
-        { targets: Math.max(targets.length, 1), queuedViews: Math.min(Number(input.dailyLimit ?? 1200), policies[slug].safeLimit), approval: "manual" },
+        { targets: Math.max(targets.length, 1), queuedViews: Math.min(Number(input.dailyLimit ?? 1200), modulePolicies[slug].safeLimit), approval: "manual" },
         (targets.length ? targets : ["@target_channel"]).map((target, index) => ({ target, views: 120 + index * 35, status: "planned", pace: String(input.pace ?? "Нормальный") })),
         ["Проверить GGR аккаунтов", "Подтвердить кампанию вручную", "Запустить worker"],
       );
@@ -98,7 +72,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   ggr: (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const accounts = linesFrom(input.accounts);
       return baseResult(
@@ -113,7 +87,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   "neuro-dialogs": (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       return baseResult(
         slug,
@@ -127,7 +101,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   "manager-telegram-accounts": (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const accounts = linesFrom(input.batch);
       const proxyPool = linesFrom(input.proxyPool);
@@ -143,7 +117,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   "account-takeover-protection": (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const accounts = linesFrom(input.accounts);
       const done = linesFrom(input.securityState);
@@ -177,7 +151,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   massreact: (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const posts = linesFrom(input.postLinks);
       return baseResult(
@@ -192,7 +166,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   "bulk-story-copy": (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const stories = linesFrom(input.storyLinks);
       const accounts = linesFrom(input.targetAccounts);
@@ -206,7 +180,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
         {
           stories: storyCount,
           accounts: accountCount,
-          queuedPublications: Math.min(storyCount * accountCount, policies[slug].safeLimit),
+          queuedPublications: Math.min(storyCount * accountCount, modulePolicies[slug].safeLimit),
           captionMode: String(input.captionMode ?? "Сохранить оригинал"),
           pace: String(input.pace ?? "Осторожный"),
         },
@@ -222,7 +196,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   "telegram-folders": (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const sources = linesFrom(input.sources);
       const accounts = linesFrom(input.assignAccounts);
@@ -249,7 +223,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
   }),
   "unified-inbox": (slug) => ({
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const accounts = linesFrom(input.accounts);
 
@@ -278,7 +252,7 @@ const adapterFactories: Record<string, (slug: string) => ModuleAdapter> = {
 function parserAdapter(slug: string): ModuleAdapter {
   return {
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       const seed = seedFrom(input);
       const rows = makeRows(seed, 8);
@@ -300,7 +274,7 @@ function parserAdapter(slug: string): ModuleAdapter {
 function protectionAdapter(slug: string): ModuleAdapter {
   return {
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       return baseResult(
         slug,
@@ -317,7 +291,7 @@ function protectionAdapter(slug: string): ModuleAdapter {
 function warmAdapter(slug: string): ModuleAdapter {
   return {
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       return baseResult(
         slug,
@@ -334,7 +308,7 @@ function warmAdapter(slug: string): ModuleAdapter {
 function aiAdapter(slug: string): ModuleAdapter {
   return {
     slug,
-    policy: policies[slug],
+    policy: modulePolicies[slug],
     execute(input) {
       return baseResult(
         slug,
@@ -366,7 +340,7 @@ for (const module of modules) {
 
 adapters.set("proxy-checker", {
   slug: "proxy-checker",
-  policy: policies["proxy-checker"],
+  policy: modulePolicies["proxy-checker"],
   execute(input) {
     return baseResult(
       "proxy-checker",
@@ -383,6 +357,4 @@ export function getModuleAdapter(slug: string) {
   return adapters.get(slug);
 }
 
-export function getModulePolicy(slug: string) {
-  return policies[slug] ?? { risk: "low", approval: "auto", safeLimit: 100, requires: [] };
-}
+export { getModulePolicy } from "@/lib/module-policies";

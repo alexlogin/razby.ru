@@ -83,6 +83,21 @@ CREATE TABLE IF NOT EXISTS TelegramAccount (
   CONSTRAINT TelegramAccount_workspaceId_fkey FOREIGN KEY (workspaceId) REFERENCES Workspace (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS TelegramAuthSession (
+  id TEXT PRIMARY KEY NOT NULL,
+  workspaceId TEXT NOT NULL,
+  label TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'CODE_SENT',
+  encryptedJson TEXT NOT NULL,
+  isCodeViaApp BOOLEAN NOT NULL DEFAULT false,
+  expiresAt DATETIME NOT NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT TelegramAuthSession_workspaceId_fkey FOREIGN KEY (workspaceId) REFERENCES Workspace (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS TelegramAuthSession_workspaceId_status_expiresAt_idx ON TelegramAuthSession(workspaceId, status, expiresAt);
+
 CREATE TABLE IF NOT EXISTS ProxyEndpoint (
   id TEXT PRIMARY KEY NOT NULL,
   workspaceId TEXT NOT NULL,

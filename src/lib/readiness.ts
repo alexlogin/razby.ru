@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getModulePolicy } from "@/lib/module-adapters";
+import { getModulePolicy } from "@/lib/module-policies";
 import { getWorkspaceExecutionMode } from "@/lib/admin-settings";
 import { authEmailAllowlist, hasEmailDeliveryConfig, isEmailAuthEnabled } from "@/lib/email-auth";
 

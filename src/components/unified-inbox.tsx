@@ -114,6 +114,12 @@ export function UnifiedInbox({ initialConversations }: { initialConversations: C
     }
 
     upsertConversation(data.conversation);
+
+    if (action === "SEND" && data.delivery?.mode === "live") {
+      setMessage(`Telegram sent: ${data.delivery.peer}`);
+      return;
+    }
+
     setMessage(action === "SEND" ? t("inbox.msgSent") : t("inbox.msgUpdated"));
   }
 

@@ -43,6 +43,8 @@ const services = ["openrouter", "telegram-api", "telegram-session", "telegram-bo
 
 type Service = (typeof services)[number];
 
+const testableServices = new Set<Service>(["openrouter", "telegram-api", "telegram-session"]);
+
 const serviceFields: Record<Service, ServiceField[]> = {
   openrouter: [
     { name: "apiKey", label: "OpenRouter API key", type: "password", placeholder: "sk-or-..." },
@@ -294,7 +296,12 @@ export function AdminConsole({
       return;
     }
 
-    setMessage(`OpenRouter OK: ${data.result.model} · ${data.result.reply}`);
+    if (service === "openrouter") {
+      setMessage(`OpenRouter OK: ${data.result.model} · ${data.result.reply}`);
+      return;
+    }
+
+    setMessage(`Telegram OK: ${data.result.account?.username ?? "account"} · ${data.result.sessionLabel}`);
   }
 
   if (!unlocked) {
@@ -432,9 +439,9 @@ export function AdminConsole({
             <button className="button" type="submit" disabled={savingIntegration || !label.trim()}>
               <Save size={16} /> {savingIntegration ? copy.saving : copy.saveAccess}
             </button>
-            {service === "openrouter" ? (
+            {testableServices.has(service) ? (
               <button className="button secondary" type="button" onClick={testIntegration} disabled={testingIntegration}>
-                <Activity size={16} /> {testingIntegration ? copy.testing : "Test OpenRouter"}
+                <Activity size={16} /> {testingIntegration ? copy.testing : service === "openrouter" ? "Test OpenRouter" : "Test Telegram"}
               </button>
             ) : null}
           </div>
