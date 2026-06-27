@@ -14,3 +14,6 @@ prisma/razby.db-journal
 qa-screenshots/
 .env.production
 *.sqlite
+.test-modules*.db*
+prisma/.test-modules*.db*
+*.tsbuildinfo

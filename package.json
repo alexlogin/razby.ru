@@ -13,6 +13,7 @@
     "db:push": "node scripts/init-db.mjs",
     "db:init": "node scripts/init-db.mjs",
     "db:seed": "tsx prisma/seed.ts",
+    "test": "tsx scripts/test-modules.ts",
     "worker": "tsx scripts/worker.ts",
     "worker:watch": "tsx scripts/worker.ts --watch"
   },

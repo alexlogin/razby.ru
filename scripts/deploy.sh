@@ -137,4 +137,16 @@ fi
 echo
 echo "✅ Готово. Приложение Razby слушает на 127.0.0.1:${RAZBY_HOST_PORT}."
 echo "   Внешний front proxy VPS проксирует https://${DOMAIN} → 127.0.0.1:${RAZBY_HOST_PORT} (HTTPS на нём)."
+
+# 8. По запросу — показать код входа владельца (для первого входа). По умолчанию НЕ печатается.
+if [ "${RAZBY_SHOW_OWNER_CODE:-}" = "1" ]; then
+  OWNER_CODE="$(grep -E '^RAZBY_OWNER_ACCESS_CODE=' .env | head -1 | cut -d= -f2- || true)"
+  echo
+  echo "──────────────────────────────────────────────"
+  echo " Вход владельца: https://${DOMAIN}/login → «Код владельца»"
+  echo " RAZBY_OWNER_ACCESS_CODE = ${OWNER_CODE}"
+  echo " (после первого входа смените код в .env и пере-деплойте)"
+  echo "──────────────────────────────────────────────"
+fi
+
 "${COMPOSE[@]}" ps
