@@ -1,0 +1,14 @@
+[Unit]
+Description=Razby web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/razby
+EnvironmentFile=/opt/razby/.env
+ExecStart=/usr/bin/npm run start -- -H 0.0.0.0 -p 3000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

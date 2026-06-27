@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 #
-# Развёртывание razby.ru на VPS одной командой.
+# Развёртывание razby.ru (приложение Razby) на VPS одной командой.
 #   ./scripts/deploy.sh            — собрать и (пере)запустить стек
-#   ./scripts/deploy.sh --seed     — то же + наполнить БД (первый запуск)
-#   ./scripts/deploy.sh --no-pull  — не делать git pull
+#   ./scripts/deploy.sh --seed     — то же + наполнить БД (npm run db:seed)
+#   ./scripts/deploy.sh --no-pull  — не делать git pull (используется автодеплоем из CI)
 #
 # Требования на сервере: Docker + docker compose, openssl, DNS razby.ru → этот сервер.
+#
+# Безопасная замена старого сайта:
+#   • стек живёт в compose-проекте razby-prod и владеет только портами 80/443 через Caddy
+#     (как и раньше) — другие сайты на VPS не затрагиваются;
+#   • перед переключением делается резервная копия томов старого проекта (razby-prod_*)
+#     в каталог backups/;
+#   • старые контейнеры (api/postgres/redis старого сайта) удаляются как orphans,
+#     их тома НЕ удаляются и остаются на диске как дополнительный бэкап.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,33 +38,46 @@ fi
 
 # 1a. Переопределение домена/почты из окружения (используется автодеплоем из CI)
 if [ -n "${DOMAIN:-}" ]; then
-  sed -i "s|^DOMAIN=.*|DOMAIN=${DOMAIN}|" .env
+  if grep -qE '^DOMAIN=' .env; then sed -i "s|^DOMAIN=.*|DOMAIN=${DOMAIN}|" .env; else echo "DOMAIN=${DOMAIN}" >> .env; fi
 fi
 if [ -n "${ACME_EMAIL:-}" ]; then
-  sed -i "s|^ACME_EMAIL=.*|ACME_EMAIL=${ACME_EMAIL}|" .env
+  if grep -qE '^ACME_EMAIL=' .env; then sed -i "s|^ACME_EMAIL=.*|ACME_EMAIL=${ACME_EMAIL}|" .env; else echo "ACME_EMAIL=${ACME_EMAIL}" >> .env; fi
 fi
 
-# 2. Автогенерация секретов вместо заглушек CHANGE_ME
+# 2. Значения по умолчанию и автогенерация секретов
 gen_secret() { openssl rand -base64 48 | tr -d '\n/+=' | cut -c1-48; }
+set_default() {
+  local key="$1" def="$2"
+  grep -qE "^${key}=" .env || { echo "${key}=${def}" >> .env; echo "→ Добавлен ${key}=${def}"; }
+}
 ensure_secret() {
   local key="$1" cur
-  cur="$(grep -E "^${key}=" .env | cut -d= -f2- || true)"
+  if ! grep -qE "^${key}=" .env; then
+    echo "${key}=$(gen_secret)" >> .env; echo "→ Сгенерирован ${key}."; return
+  fi
+  cur="$(grep -E "^${key}=" .env | head -1 | cut -d= -f2-)"
   case "$cur" in
     "" | CHANGE_ME*)
-      local val; val="$(gen_secret)"
-      sed -i "s|^${key}=.*|${key}=${val}|" .env
-      echo "→ Сгенерирован ${key}."
-      ;;
+      sed -i "s|^${key}=.*|${key}=$(gen_secret)|" .env; echo "→ Сгенерирован ${key}." ;;
   esac
 }
-ensure_secret POSTGRES_PASSWORD
-ensure_secret JWT_ACCESS_SECRET
-ensure_secret JWT_REFRESH_SECRET
+set_default DATABASE_URL "file:./razby.db"
+set_default RAZBY_DEMO_MODE "false"
+set_default RAZBY_EXECUTION_MODE "simulate"
+set_default RAZBY_WORKER_ID "vps-worker-01"
+# Порты, на которые внешний host-nginx VPS проксирует razby.ru (как у старого сайта):
+#   / → RAZBY_HOST_PORT (13001), /api/ и /health → RAZBY_API_PORT (4000).
+set_default RAZBY_HOST_PORT "13001"
+set_default RAZBY_API_PORT "4000"
+ensure_secret NEXTAUTH_SECRET
+ensure_secret RAZBY_OWNER_ACCESS_CODE
+ensure_secret RAZBY_ADMIN_TOKEN
 
-DOMAIN="$(grep -E '^DOMAIN=' .env | cut -d= -f2- || true)"
-ACME_EMAIL="$(grep -E '^ACME_EMAIL=' .env | cut -d= -f2- || true)"
+DOMAIN="$(grep -E '^DOMAIN=' .env | head -1 | cut -d= -f2- || true)"
 [ -n "$DOMAIN" ] || { echo "Заполните DOMAIN в .env" >&2; exit 1; }
-[ -n "$ACME_EMAIL" ] || { echo "Заполните ACME_EMAIL в .env" >&2; exit 1; }
+RAZBY_HOST_PORT="$(grep -E '^RAZBY_HOST_PORT=' .env | head -1 | cut -d= -f2- || true)"
+RAZBY_API_PORT="$(grep -E '^RAZBY_API_PORT=' .env | head -1 | cut -d= -f2- || true)"
+export DOMAIN RAZBY_HOST_PORT RAZBY_API_PORT
 
 # 3. Обновление кода
 if [ "$NO_PULL" = false ] && [ -d .git ]; then
@@ -64,30 +85,68 @@ if [ "$NO_PULL" = false ] && [ -d .git ]; then
   git pull --ff-only || echo "  (git pull пропущен)"
 fi
 
-# 4. Сборка и запуск
-echo "→ Сборка и запуск контейнеров…"
-"${COMPOSE[@]}" up -d --build
+# 4. Резервная копия томов прежнего razby-сайта
+echo "→ Резервная копия томов прежнего razby-сайта…"
+mkdir -p backups
+TS="$(date +%Y%m%d-%H%M%S)"
+# Бэкапим тома прежнего razby-сайта (проекты razby / razby-prod)
+for vol in $(docker volume ls -q 2>/dev/null | grep -E '^razby[-_]' || true); do
+  echo "   • $vol"
+  docker run --rm -v "$vol":/from -v "$ROOT/backups":/to alpine \
+    tar czf "/to/${vol}-${TS}.tar.gz" -C /from . >/dev/null 2>&1 \
+    && echo "     → backups/${vol}-${TS}.tar.gz" \
+    || echo "     (пропущено: $vol)"
+done
 
-# 5. Ожидание готовности API (миграции применяются при старте контейнера)
-echo -n "→ Ожидание готовности API"
+# 4a. Диагностика текущего состояния (видно в логах деплоя)
+echo "→ Текущие контейнеры на сервере:"
+docker ps --format '   {{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null || true
+echo "→ Compose-проекты:"
+docker compose ls --all 2>/dev/null || true
+
+# 4b. Убрать временный проект razby-prod (артефакт прежних попыток деплоя).
+#     Внешний front proxy (80/443) и другие сайты на VPS НЕ трогаем.
+echo "→ Удаляю временный проект razby-prod (если есть)…"
+docker compose -p razby-prod down --remove-orphans 2>/dev/null || true
+
+# 5. Сборка и запуск. Проект называется razby (как у старого сайта), поэтому
+#    up --remove-orphans заменяет старые контейнеры (web/api/postgres/redis) новым
+#    web+worker на 127.0.0.1:${RAZBY_HOST_PORT}, не затрагивая front proxy.
+echo "→ Сборка и запуск контейнеров…"
+"${COMPOSE[@]}" up -d --build --remove-orphans
+
+# 6. Ожидание готовности приложения
+echo -n "→ Ожидание готовности приложения"
 ready=false
 for _ in $(seq 1 60); do
-  if "${COMPOSE[@]}" exec -T api node -e \
-    "require('http').get('http://localhost:4000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))" \
+  if "${COMPOSE[@]}" exec -T web node -e \
+    "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
     >/dev/null 2>&1; then
     ready=true; echo " — готово"; break
   fi
   echo -n "."; sleep 3
 done
-[ "$ready" = true ] || { echo; echo "API не поднялся, смотрите логи: ${COMPOSE[*]} logs api" >&2; exit 1; }
+[ "$ready" = true ] || { echo; echo "Приложение не поднялось, смотрите логи: ${COMPOSE[*]} logs web" >&2; exit 1; }
 
-# 6. Сидинг (по флагу)
+# 7. Сидинг (по флагу)
 if [ "$SEED" = true ]; then
   echo "→ Наполнение БД (seed)…"
-  "${COMPOSE[@]}" exec -T api node dist-seed/seed.js
+  "${COMPOSE[@]}" exec -T web npm run db:seed
 fi
 
 echo
-echo "✅ Готово. Сайт: https://${DOMAIN}"
-echo "   Caddy выпустит HTTPS-сертификат автоматически при первом запросе (DNS должен вести на сервер)."
+echo "✅ Готово. Приложение Razby слушает на 127.0.0.1:${RAZBY_HOST_PORT}."
+echo "   Внешний front proxy VPS проксирует https://${DOMAIN} → 127.0.0.1:${RAZBY_HOST_PORT} (HTTPS на нём)."
+
+# 8. По запросу — показать код входа владельца (для первого входа). По умолчанию НЕ печатается.
+if [ "${RAZBY_SHOW_OWNER_CODE:-}" = "1" ]; then
+  OWNER_CODE="$(grep -E '^RAZBY_OWNER_ACCESS_CODE=' .env | head -1 | cut -d= -f2- || true)"
+  echo
+  echo "──────────────────────────────────────────────"
+  echo " Вход владельца: https://${DOMAIN}/login → «Код владельца»"
+  echo " RAZBY_OWNER_ACCESS_CODE = ${OWNER_CODE}"
+  echo " (после первого входа смените код в .env и пере-деплойте)"
+  echo "──────────────────────────────────────────────"
+fi
+
 "${COMPOSE[@]}" ps

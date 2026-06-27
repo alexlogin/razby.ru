@@ -1,42 +1,19 @@
-# dependencies
+.next/
 node_modules/
-.pnpm-store/
-
-# build output
 dist/
 build/
-.next/
-out/
-*.tsbuildinfo
-
-# env
-.env
-.env.local
-.env.*.local
-
-# logs
-logs/
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-# prisma
-prisma/migrations/dev.db*
-
-# os / editor
-.DS_Store
-.idea/
-.vscode/*
-!.vscode/extensions.json
-
-# uploads / storage (только runtime-каталоги в корне и в apps/api, не исходники)
-/storage/
-/uploads/
-/apps/api/storage/
-/apps/api/uploads/
-/infra/data/
-/backups/
-
-# coverage
 coverage/
-.nyc_output/
+.env
+.env*.local
+razby.db
+razby.db-journal
+prisma/razby.db
+prisma/razby.db-journal
+*.log
+.codex-gramgpt-audit/
+qa-screenshots/
+.env.production
+*.sqlite
+.test-modules*.db*
+prisma/.test-modules*.db*
+*.tsbuildinfo
