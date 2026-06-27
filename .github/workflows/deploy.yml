@@ -50,7 +50,7 @@ jobs:
             --exclude 'storage' \
             --exclude 'backups' \
             --exclude '.env' \
-            -e "ssh -i ~/.ssh/id_deploy -p $PORT" \
+            -e "ssh -i ~/.ssh/id_deploy -p $PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=240" \
             ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:razby/"
 
       - name: Запустить деплой на сервере
@@ -60,6 +60,9 @@ jobs:
           if [ "${{ github.event.inputs.seed }}" = "true" ]; then SEED_FLAG="--seed"; fi
           SHOW_CODE=""
           if [ "${{ github.event.inputs.show_owner_code }}" = "true" ]; then SHOW_CODE="RAZBY_SHOW_OWNER_CODE=1"; fi
+          # ServerAliveInterval не даёт SSH оборваться во время долгих «тихих» шагов
+          # Docker-сборки (npm install), иначе деплой падает с broken pipe.
           ssh -i ~/.ssh/id_deploy -p "$PORT" \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=240 -o ConnectTimeout=30 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd razby && $SHOW_CODE DOMAIN='${{ secrets.DEPLOY_DOMAIN }}' ACME_EMAIL='${{ secrets.DEPLOY_ACME_EMAIL }}' ./scripts/deploy.sh --no-pull $SEED_FLAG"
